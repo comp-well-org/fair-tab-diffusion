@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__
+*.egg-info
+*.pt
+*.zip
+adapted
+public-tabular-datasets
+fair-tab-diffusion-exps
