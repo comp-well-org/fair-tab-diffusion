@@ -1,4 +1,4 @@
-"""Unet.
+"""Modules for Unet.
 
 Summary:
     Unet composes of encoder and decoder.
@@ -15,8 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List
-from cfair.seq.generator.diffusion.attention import SpatialTransformer
-
+from attention import SpatialTransformer
 
 class DownSample(nn.Module):
     """DownSample."""
@@ -41,7 +40,6 @@ class DownSample(nn.Module):
             output tensor of shape `[batch_size, n_channels, ceil(height // 2), ceil(width // 2)]`.
         """
         return self.down(x)
-
 
 class UpSample(nn.Module):
     """UpSample."""
@@ -69,7 +67,6 @@ class UpSample(nn.Module):
         x = F.interpolate(x, scale_factor=2, mode='nearest')
         # apply convolution
         return self.conv(x)
-    
 
 class GroupNorm(nn.GroupNorm):
     """GroupNorm.
@@ -91,7 +88,6 @@ class GroupNorm(nn.GroupNorm):
         # first convert to float and then convert back to the original type
         return super().forward(x.float()).type(x.dtype)
 
-
 def group_norm(n_channels: int, n_groups: int = 32) -> nn.Module:
     """GroupNorm.
     
@@ -110,7 +106,6 @@ def group_norm(n_channels: int, n_groups: int = 32) -> nn.Module:
     except ValueError as e:
         print(f'n_channels: {n_channels}, n_groups: {n_groups}')
         raise e
-
 
 class ResBlock(nn.Module):
     """ResBlock."""
@@ -196,7 +191,6 @@ class ResBlock(nn.Module):
         # print(f'x.shape: {list(x.shape)} after skip connection')
         return x
     
-
 class TimestepEmbedSequential(nn.Sequential):
     """TimestepEmbedSequential.
     
@@ -223,7 +217,6 @@ class TimestepEmbedSequential(nn.Sequential):
             else:
                 x = layer(x)
         return x
-
 
 class Unet(nn.Module):
     """Unet."""
@@ -421,7 +414,6 @@ class Unet(nn.Module):
         x = self.out_layers(x)
         # print(f'x.shape: {list(x.shape)} after `Unet`')
         return x
-
 
 def _test():
     # random seed

@@ -1,5 +1,3 @@
-"""Configs."""
-
 import math
 from typing import List
 
@@ -36,7 +34,6 @@ class DenoiseFnCfg:
     def d_cond_emb(self, v) -> None:
         self._config['d_cond_emb'] = v
 
-
 class DataCfg:
     def __init__(self, n_channels: int, d_oh_x: int, n_unq_c_lst: List[int]) -> None:
         self._config = {}
@@ -67,7 +64,6 @@ class DataCfg:
     @n_unq_c_lst.setter
     def n_unq_c_lst(self, v: List[int]) -> None:
         self._config['n_unq_c_lst'] = v
-
 
 class GuidCfg:
     def __init__(

@@ -1,23 +1,13 @@
-"""Estimator."""
-
 import copy
 import math
 import torch
 import torch.nn as nn
-from cfair.seq.generator.diffusion.ddpm import timestep_embedding
-from cfair.seq.generator.diffusion.unet import Unet
-from cfair.seq.generator.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
-
+from tools import timestep_embedding
+from configs import DenoiseFnCfg, DataCfg, GuidCfg
+from unet import Unet
 
 class PosteriorEstimator(nn.Module):
-    """PosteriorEstimator."""
-
     def __init__(self, pstr_est: Unet) -> None:
-        """Init.
-        
-        Args:
-            pstr_est: posterior estimator.
-        """
         super().__init__()
         self.pstr_est = pstr_est
     
@@ -34,14 +24,7 @@ class PosteriorEstimator(nn.Module):
         """
         return self.pstr_est(x, t, cond)
 
-
-# TODO: have more advanced encoder and decoder
 class DenoiseFn(nn.Module):
-    """Denoiser.
-    
-    DDPM uses a denoise_fn to estimate orginal input given timestep and noisy input.
-    """
-
     def __init__(
         self, 
         denoise_fn_cfg: DenoiseFnCfg, 
@@ -51,16 +34,6 @@ class DenoiseFn(nn.Module):
         decoder: callable = None, 
         posterior_est: PosteriorEstimator = None,
     ) -> None:
-        """Init.
-        
-        Args:
-            denoise_fn_cfg: denoising function config.
-            data_cfg: data config.
-            guid_cfg: guidance config.
-            encoder: encoder.
-            decoder: decoder.
-            posterior_est: posterior estimator.
-        """
         super().__init__()
         # config
         self.denoise_fn_cfg = copy.deepcopy(denoise_fn_cfg)
@@ -126,11 +99,6 @@ class DenoiseFn(nn.Module):
         self.n_channels = n_channels
     
     def update_guid_cfg(self, guid_cfg: GuidCfg) -> None:
-        """Update guidance config.
-        
-        Args:
-            guid_cfg: guidance config.
-        """
         self.guid_cfg_history.append(copy.deepcopy(guid_cfg))
         self.guid_cfg = copy.deepcopy(guid_cfg)
     
@@ -258,7 +226,6 @@ class DenoiseFn(nn.Module):
             x = x.squeeze(1)  # remove channel dimension to match input
         return x
 
-
 def _test():
     # configs
     d_oh_x = 15
@@ -281,6 +248,7 @@ def _test():
         ], 
         dim=1,
     )
+    print(f'x.shape: {x.shape}, t.shape: {t.shape}, cond.shape: {cond.shape}')
     
     # fair
     coef = 3 if cond.shape[1] > 1 else 2
@@ -323,7 +291,6 @@ def _test():
     )
     x = denoise_fn(x, t, cond)
     print(f'x.shape: {x.shape}')
-
 
 if __name__ == '__main__':
     _test()

@@ -4,16 +4,13 @@ import os
 import torch
 import numpy as np
 import pandas as pd
-from cfair.utils.xyc.tab.dataloader import XYCTabDataModule
-from cfair.seq.generator.diffusion.unet import Unet
-from cfair.seq.generator.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
-from cfair.seq.generator.diffusion.estimator import PosteriorEstimator, DenoiseFn
-from cfair.seq.generator.diffusion.ddpm import GaussianMultinomialDiffusion
-
+from data import XYCTabDataModule
+from unet import Unet
+from configs import DenoiseFnCfg, DataCfg, GuidCfg
+from estimator import PosteriorEstimator, DenoiseFn
+from ddpm import GaussianMultinomialDiffusion
 
 class XYCTabTrainer:
-    """XYCTrainer."""
-    
     def __init__(
         self,
         n_epochs: int = 100,

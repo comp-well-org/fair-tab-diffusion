@@ -1,4 +1,4 @@
-"""Attention.
+"""Modules for attention mechanism and transformer blocks.
 
 Reference:
     - https://github.com/labmlai/annotated_deep_learning_paper_implementations/tree/master/labml_nn/diffusion/stable_diffusion
@@ -8,7 +8,6 @@ Reference:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 class GeGLU(nn.Module):
     """GeGLU.
@@ -38,7 +37,6 @@ class GeGLU(nn.Module):
         x, gate = self.proj(x).chunk(2, dim=-1)
         return x * F.gelu(gate)
     
-
 class FeedForward(nn.Module):
     """FeedForward.
     
@@ -71,7 +69,6 @@ class FeedForward(nn.Module):
             output tensor of shape `[batch_size, ..., d_model]`.
         """
         return self.ffn(x)
-
 
 class CrossAttention(nn.Module):
     """CrossAttention.
@@ -166,7 +163,6 @@ class CrossAttention(nn.Module):
         
         # map to `[batch_size, n_channels, d_model]` with a linear layer
         return self.to_out(out)
-    
 
 class BasicTransformerBlock(nn.Module):
     """BasicTransformerBlock.
@@ -210,7 +206,6 @@ class BasicTransformerBlock(nn.Module):
         x = self.cross_attn(self.norm2(x), cond_emb=cond_emb) + x
         # feed-forward network and skip connection
         return self.ffn(self.norm3(x)) + x
-        
         
 class SpatialTransformer(nn.Module):
     """SpatialTransformer."""
@@ -285,7 +280,6 @@ class SpatialTransformer(nn.Module):
         # print(f'x.shape: {list(x.shape)} after `Conv2d` with kernel size of 1 and skip connection')
         return x
 
-
 def _test():
     # random seed
     torch.manual_seed(0)
@@ -317,7 +311,6 @@ def _test():
         n_channels, n_layers=2, n_heads=10, d_cond_emb=3,
     )(x, cond_emb)
     print(f'x.shape: {list(x.shape)} after `SpatialTransformer`')
-
 
 if __name__ == '__main__':
     _test()

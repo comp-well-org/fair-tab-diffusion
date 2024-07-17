@@ -1,43 +1,17 @@
-"""DDPM.
+"""Modules for denoising diffusion probabilistic models based on Gaussian and multinomial kernels.
 
 References:
     - https://github.com/yandex-research/tab-ddpm/blob/main/tab_ddpm/gaussian_multinomial_diffsuion.py
 """
 
-# TODO: add type hints and doc strings, and improve function names
-import os
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import List
-from cfair.seq.scorer.performance.net import MLP
-from cfair.seq.generator.diffusion.tools import log_add_exp, log_1_min_a, extract, mean_flat, normal_kl, discretized_gaussian_log_likelihood
-from cfair.seq.generator.diffusion.tools import sliced_logsumexp, index_to_log_onehot, sum_except_batch, log_categorical, ohe_to_categories
-
-
-def timestep_embedding(timesteps: torch.Tensor, dim: int, max_period: float = 10000.0) -> torch.Tensor:
-    """Create sinusoidal timestep embeddings.
-    
-    Args:
-        timesteps: tensor of shape `[N,]`
-        dim: embedding dimension
-        max_period: maximum period
-    
-    Returns:
-        sinusoidal timestep embeddings of shape `[N, dim]`
-    """
-    half = dim // 2
-    freqs = torch.exp(
-        -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half,
-    ).to(device=timesteps.device)
-    args = timesteps[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    return embedding
-
+from tools import log_add_exp, log_1_min_a, extract, mean_flat, normal_kl, discretized_gaussian_log_likelihood
+from tools import sliced_logsumexp, index_to_log_onehot, sum_except_batch, log_categorical, ohe_to_categories
 
 def betas_for_alpha_bar(num_diffusion_timesteps: int, alpha_bar: callable, max_beta: float = 0.2) -> np.ndarray:
     """Create a beta schedule that discretizes the given alpha_t_bar function.
@@ -58,7 +32,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, alpha_bar: callable, max_b
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
     return np.array(betas)
-
 
 def get_named_beta_schedule(schedule_name: str, num_diffusion_timesteps: int, max_beta: float = 0.2) -> np.ndarray:
     """Get a pre-defined beta schedule for the given name.
@@ -97,10 +70,7 @@ def get_named_beta_schedule(schedule_name: str, num_diffusion_timesteps: int, ma
         )
     raise NotImplementedError(f'unknown beta schedule: {schedule_name}')
 
-
-class GaussianMultinomialDiffusion(nn.Module):
-    """GaussianMultinomialDiffusion."""
-    
+class GaussianMultinomialDiffusion(nn.Module):    
     def __init__(
         self,
         num_classes: np.array,
@@ -562,30 +532,13 @@ class GaussianMultinomialDiffusion(nn.Module):
             else:
                 instruction = cond[:, 0].unsqueeze(1)  # only use the first column which is the outcome
         
-        # TODO: make feedback an argument, have ensembles of pretrained feedback models, and corresponding configurations
-        feedback = False
-        if feedback:
-            pretrained_dir = '/home/tom/github/cfair/pretrained-models/unimodal/'
-            seq_net = MLP(
-                input_dim=24,
-                output_dim=2,
-                hidden_dim=[64, 64],
-                activation='relu',
-            )        
-            seq_net.load_state_dict(
-                torch.load(
-                    os.path.join(pretrained_dir, 'depression', 'mlp-1.pt'),
-                ),
-            )
-            seq_net.to(device)
-            for param in seq_net.parameters():
-                param.requires_grad = False
-        
         x_t = torch.cat([z_norm, log_z], dim=1).float()
         for i in reversed(range(0, self.num_timesteps)):
             with torch.no_grad():
-                # print('`z_norm` std', torch.std(z_norm))
-                print(f'sampling timestep {self.num_timesteps - 1:04d} -> {i:04d} -- generated: {num_generated:04d}', end='\r')
+                if i != self.num_timesteps - 1:
+                    print(f'sampling timestep {self.num_timesteps - 1:04d} -> {i:04d} -- generated: {num_generated:04d}', end='\r')
+                else:
+                    print(f'sampling timestep {self.num_timesteps - 1:04d} -> {i:04d} -- generated: {num_generated:04d}')
                 t = torch.full((b,), i, device=device, dtype=torch.long)
                 model_out = self._denoise_fn(
                     x_t,
@@ -597,20 +550,7 @@ class GaussianMultinomialDiffusion(nn.Module):
                 z_norm = self.gaussian_p_sample(model_out_num, z_norm, t)['sample']
                 if has_cat:
                     log_z = self.p_sample(model_out_cat, log_z, t)
-                
-            # TODO: if `feedback`, then call ensemble of feedback models and compute a joint loss 
-            if feedback:
-                x_t = torch.cat([z_norm, log_z], dim=1).float().requires_grad_(True)
-                x_t.retain_grad()
-                y_pred = seq_net(x_t)
-                loss = nn.CrossEntropyLoss(reduction='mean')(y_pred, instruction[:, 0])
-                loss.backward()
-                grad_x_t = x_t.grad
-                x_t.detach_()        
-                x_t -= 0.1 * grad_x_t
-            else:
-                # this part does not need to be changed
-                x_t = torch.cat([z_norm, log_z], dim=1).float()
+            x_t = torch.cat([z_norm, log_z], dim=1).float()
     
         with torch.no_grad():
             z_ohe = torch.exp(log_z).round()
@@ -645,7 +585,6 @@ class GaussianMultinomialDiffusion(nn.Module):
     def update_guid_cfg(self, guid_cfg):
         self._denoise_fn.update_guid_cfg(guid_cfg)
 
-
 def _test():
     num_diffusion_timesteps = 1000
     beta_schedule = get_named_beta_schedule('cosine', num_diffusion_timesteps)
@@ -655,6 +594,7 @@ def _test():
         num_numerical_features=2,
         denoise_fn=lambda x, t, cond: x,
     )
+    
     # mixed loss
     x_num = torch.randn(10, 2)  # numerical features
     x_cat = torch.randint(0, 1, (10, 9))  # categorical features: 9 features with 2, 3, 4 categories
@@ -665,13 +605,13 @@ def _test():
         cond=torch.randint(0, 2, (10,)),
     )
     print(f'mloss: {loss[0].item():.4f}, gloss: {loss[1].item():.4f}')
+    
     # sample
     n_samples = 10
     c_dist = [torch.ones(2)]
-    sample, cond = diffusion.sample(n_samples, c_dist)
+    sample, cond = diffusion.sample(n_samples, c_dist, n_samples)
     print(f'sample.shape: {sample.shape} after ordinal encoding')
     print(f'cond.shape: {cond.shape}')
-
 
 if __name__ == '__main__':
     _test()
