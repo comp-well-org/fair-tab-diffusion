@@ -1,0 +1,45 @@
+# interactive shell
+jupyter
+ipykernel
+ipywidgets
+
+# style checker
+wemake-python-styleguide
+
+# machine learning
+scikit-learn
+imblearn
+pandas
+numpy
+xgboost
+shap
+skops
+catboost
+optuna
+statsmodels
+bioread
+
+# natural language processing
+nltk
+
+# deep learning
+torch
+
+# hugging face
+datasets
+soundfile
+transformers
+
+# imaging
+nilearn
+pydicom
+scikit-image
+
+# data visualization
+seaborn
+matplotlib
+plotly
+dash
+
+# utilities
+tomli
