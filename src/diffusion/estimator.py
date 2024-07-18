@@ -2,9 +2,9 @@ import copy
 import math
 import torch
 import torch.nn as nn
-from tools import timestep_embedding
-from configs import DenoiseFnCfg, DataCfg, GuidCfg
-from unet import Unet
+from .tools import timestep_embedding
+from .configs import DenoiseFnCfg, DataCfg, GuidCfg
+from .unet import Unet
 
 class PosteriorEstimator(nn.Module):
     def __init__(self, pstr_est: Unet) -> None:

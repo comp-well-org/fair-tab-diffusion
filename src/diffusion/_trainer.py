@@ -4,11 +4,11 @@ import os
 import torch
 import numpy as np
 import pandas as pd
-from data import XYCTabDataModule
-from unet import Unet
-from configs import DenoiseFnCfg, DataCfg, GuidCfg
-from estimator import PosteriorEstimator, DenoiseFn
-from ddpm import GaussianMultinomialDiffusion
+from .utils import XYCTabDataModule
+from .unet import Unet
+from .configs import DenoiseFnCfg, DataCfg, GuidCfg
+from .estimator import PosteriorEstimator, DenoiseFn
+from .ddpm import GaussianMultinomialDiffusion
 
 class XYCTabTrainer:
     def __init__(

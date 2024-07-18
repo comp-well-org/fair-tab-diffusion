@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List
-from attention import SpatialTransformer
+from .attention import SpatialTransformer
 
 class DownSample(nn.Module):
     """DownSample."""

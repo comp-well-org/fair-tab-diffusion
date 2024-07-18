@@ -3,6 +3,7 @@ __pycache__
 *.egg-info
 *.pt
 *.zip
+draft
 adapted
 public-tabular-datasets
 fair-tab-diffusion-exps
