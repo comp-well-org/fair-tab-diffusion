@@ -10,8 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import List
-from .tools import log_add_exp, log_1_min_a, extract, mean_flat, normal_kl, discretized_gaussian_log_likelihood
-from .tools import sliced_logsumexp, index_to_log_onehot, sum_except_batch, log_categorical, ohe_to_categories
+from .utils import log_add_exp, log_1_min_a, extract, mean_flat, normal_kl, discretized_gaussian_log_likelihood
+from .utils import sliced_logsumexp, index_to_log_onehot, sum_except_batch, log_categorical, ohe_to_categories
 
 def betas_for_alpha_bar(num_diffusion_timesteps: int, alpha_bar: callable, max_beta: float = 0.2) -> np.ndarray:
     """Create a beta schedule that discretizes the given alpha_t_bar function.

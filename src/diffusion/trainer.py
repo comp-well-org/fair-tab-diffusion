@@ -5,9 +5,6 @@ import torch
 import numpy as np
 import pandas as pd
 from .utils import XYCTabDataModule
-from .unet import Unet
-from .configs import DenoiseFnCfg, DataCfg, GuidCfg
-from .estimator import PosteriorEstimator, DenoiseFn
 from .ddpm import GaussianMultinomialDiffusion
 
 class XYCTabTrainer:
@@ -53,11 +50,11 @@ class XYCTabTrainer:
         self.model = model
         self.model.to(self.device)
 
-    def prepare_data(self, data: XYCTabDataModule):
+    def prepare_data(self, data: XYCTabDataModule, normalize: bool = True):
         self.data = data
-        self.train_loader = data.get_train_loader()
-        self.val_loader = data.get_val_loader()
-        self.test_loader = data.get_test_loader()
+        self.train_loader = data.get_dataloader('train', normalize=normalize)
+        self.eval_loader = data.get_dataloader('eval', normalize=normalize)
+        self.test_loader = data.get_dataloader('test', normalize=normalize)
         
     def fit(self, model: GaussianMultinomialDiffusion, data: XYCTabDataModule, exp_dir: str = None):
         # prepare
@@ -154,78 +151,3 @@ class XYCTabTrainer:
         lr = self.lr * (1 - frac_done / 2)
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
-
-def _test() -> None:
-    # configs
-    d_oh_x = 24
-    n_channels = 1
-    d_x_emb = 16
-    d_t_emb = 16
-    d_cond_emb = 16
-    n_base_channels = 32
-    n_groups = 1
-    data_dir = '/home/tom/github/comp-fair/db-seq/unimodal/depression/'
-    batch_size = 32
-    device = 'cpu'
-    
-    # data
-    data = XYCTabDataModule(data_dir, batch_size)
-    
-    # denoising function
-    denoise_fn = DenoiseFn(
-        denoise_fn_cfg=DenoiseFnCfg(
-            d_x_emb=d_x_emb,
-            d_t_emb=d_t_emb,
-            d_cond_emb=d_cond_emb,
-        ),
-        data_cfg=DataCfg(
-            d_oh_x=d_oh_x,
-            n_channels=n_channels,
-            n_unq_c_lst=[2, 2, 4],
-        ),
-        guid_cfg=GuidCfg(
-            cond_guid_weight=0.5,
-            cond_guid_threshold=1.0,
-            cond_momentum_weight=1.0,
-            cond_momentum_beta=0.2,
-            warmup_steps=10,
-            overall_guid_weight=1.0,
-        ),
-        posterior_est=PosteriorEstimator(
-            Unet(
-                n_in_channels=n_channels,
-                n_out_channels=n_channels,
-                n_base_channels=n_base_channels,
-                n_channels_factors=[2, 2, 2],
-                n_res_blocks=1,
-                attention_levels=[0],
-                d_t_emb=d_t_emb,
-                d_cond_emb=d_cond_emb * 4,
-                n_groups=n_groups,
-            ),
-        ),
-    )
-    
-    # diffusion model
-    diffusion = GaussianMultinomialDiffusion(
-        num_classes=np.array([2, 4, 2, 2]),
-        num_numerical_features=14,
-        denoise_fn=denoise_fn,
-        device=device,
-    )
-    diffusion.to(device)
-    
-    # trainer
-    lr = 1e-3
-    weight_decay = 1e-4
-    trainer = XYCTabTrainer(
-        n_epochs=100,
-        lr=lr,
-        weight_decay=weight_decay,
-        is_fair=True,
-        device=device,
-    )
-    trainer.fit(diffusion, data)
-
-if __name__ == '__main__':
-    _test()

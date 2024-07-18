@@ -35,10 +35,6 @@ n_tf_layers = 1
 n_heads = 1
 attention_levels = [0]
 
-[mlp]
-d_layers = [128, 1024, 1024, 1024, 1024, 1024]
-dropout = 0.0
-
 [train]
 n_epochs = 4000
 lr = 1e-3
@@ -49,10 +45,3 @@ max_non_improve = 500
 dist = 'fair'
 n_samples = 5000
 batch_size = 1000
-
-[eval]
-sk_clf_choice = ['decision-tree', 'random-forest', 'mlp', 'xgboost', 'svm']
-
-[plot]
-cat_cols = ['sex', 'race']
-num_cols = ['hours-per-week']

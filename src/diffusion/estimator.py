@@ -2,8 +2,8 @@ import copy
 import math
 import torch
 import torch.nn as nn
-from .tools import timestep_embedding
 from .configs import DenoiseFnCfg, DataCfg, GuidCfg
+from .utils import timestep_embedding
 from .unet import Unet
 
 class PosteriorEstimator(nn.Module):
@@ -225,72 +225,3 @@ class DenoiseFn(nn.Module):
         if squeeze:
             x = x.squeeze(1)  # remove channel dimension to match input
         return x
-
-def _test():
-    # configs
-    d_oh_x = 15
-    batch_size = 4
-    n_channels = 1
-    d_x_emb = 256
-    d_t_emb = 256
-    d_cond_emb = 256
-    n_base_channels = 32
-    n_groups = 1
-    
-    # data
-    x = torch.randn(batch_size, n_channels, d_oh_x)
-    t = torch.randint(0, 20, (batch_size,))
-    cond = torch.cat(
-        [
-            torch.randint(0, 2, (batch_size, 1)), 
-            torch.randint(0, 3, (batch_size, 1)),
-            torch.randint(0, 4, (batch_size, 1)),
-        ], 
-        dim=1,
-    )
-    print(f'x.shape: {x.shape}, t.shape: {t.shape}, cond.shape: {cond.shape}')
-    
-    # fair
-    coef = 3 if cond.shape[1] > 1 else 2
-    
-    # models
-    unet = Unet(
-        n_in_channels=n_channels,
-        n_out_channels=n_channels,
-        n_base_channels=n_base_channels,
-        n_channels_factors=[2, 2, 2],
-        n_res_blocks=1,
-        attention_levels=[0],
-        d_t_emb=d_t_emb,
-        d_cond_emb=d_cond_emb * coef,
-        n_groups=n_groups,
-    )
-    denoise_fn_cfg = DenoiseFnCfg(
-        d_x_emb=d_x_emb,
-        d_t_emb=d_t_emb,
-        d_cond_emb=d_cond_emb,
-    )
-    data_cfg = DataCfg(
-        d_oh_x=d_oh_x,
-        n_channels=n_channels,
-        n_unq_c_lst=[2, 3, 4],
-    )
-    guid_cfg = GuidCfg(
-        cond_guid_weight=0.5,
-        cond_guid_threshold=1.0,
-        cond_momentum_weight=1.0,
-        cond_momentum_beta=0.2,
-        warmup_steps=10,
-        overall_guid_weight=1.0,
-    )
-    denoise_fn = DenoiseFn(
-        denoise_fn_cfg=denoise_fn_cfg,
-        data_cfg=data_cfg,
-        guid_cfg=guid_cfg,
-        posterior_est=PosteriorEstimator(unet),
-    )
-    x = denoise_fn(x, t, cond)
-    print(f'x.shape: {x.shape}')
-
-if __name__ == '__main__':
-    _test()

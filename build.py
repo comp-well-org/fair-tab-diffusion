@@ -1,4 +1,4 @@
-from src.data.openml import save_adult
+from src.datagen.openml import save_adult
 from constant import ADULT_PATH
 
 def main():

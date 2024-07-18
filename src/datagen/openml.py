@@ -16,7 +16,7 @@ def get_openml_dataset(data_id: int) -> Dict[str, pd.DataFrame or pd.Series]:
     labels = data_frame.target
     return {'features': features, 'labels': labels}
 
-def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), dir_path=None):
+def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None):
     # constants for adult dataset
     DATASET_NAME = 'adult'
     DATASET_TYPE = 'tabular'
@@ -88,15 +88,15 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), dir_path=None):
 
     ratio1, ratio2 = ratios
     x_train, x_rest, y_train, y_rest = train_test_split(
-        feature_df, label_df, test_size=ratio1, random_state=42,
+        feature_df, label_df, test_size=ratio1, random_state=seed,
     )
     x_eval, x_test, y_eval, y_test = train_test_split(
-        x_rest, y_rest, test_size=ratio2, random_state=42,
+        x_rest, y_rest, test_size=ratio2, random_state=seed,
     )
     x_num_train_norm, x_num_eval_norm, x_num_test_norm, normalizer = norm_tab_x_df(
         (x_train.iloc[:, :d_num_x], x_eval.iloc[:, :d_num_x], x_test.iloc[:, :d_num_x]),
         x_norm_type=x_norm_type,
-        seed=1,
+        seed=seed,
     )
     xn_train = pd.concat([x_num_train_norm, x_train.iloc[:, d_num_x:]], axis=1)
     xn_eval = pd.concat([x_num_eval_norm, x_eval.iloc[:, d_num_x:]], axis=1)
