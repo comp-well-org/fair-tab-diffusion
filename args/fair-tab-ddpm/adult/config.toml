@@ -1,11 +1,18 @@
+[data]
+name = 'adult'
+normalize = true
+path = '/rdf/db/public-tabular-datasets/'
+batch_size = 64
+
 [exp]
 name = 'tune'
+method = 'fair-tab-ddpm'
 mode = 'unet'
 device = 'cuda'
-home = './exdir/unimodal/adult/'
-pretrained = false
+home = '/rdf/experiments/fair-tab-diffusion-exps/'
 seed = 2023
 n_seeds = 5
+fair = true
 
 [guid]
 warmup_steps = 0
@@ -14,10 +21,6 @@ cond_guid_threshold = 1.0
 cond_momentum_weight = 0.5
 cond_momentum_beta = 0.5
 overall_guid_weight = 1.0
-
-[data]
-path = './db-seq/unimodal/adult/'
-batch_size = 1024
 
 [model]
 parametrization = 'eps'
