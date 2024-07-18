@@ -20,16 +20,6 @@ class XYCTabTrainer:
         is_fair: bool = False,
         device: str = 'cpu',
     ) -> None:
-        """Init.
-        
-        Args:
-            n_epochs: number of epochs.
-            lr: learning rate.
-            weight_decay: weight decay.
-            max_non_improve: maximum number of epochs to keep training if no improvement.
-            is_fair: whether to use fair diffusion.
-            device: device.
-        """
         self.n_epochs = n_epochs
         self.lr = lr
         self.weight_decay = weight_decay
@@ -46,16 +36,6 @@ class XYCTabTrainer:
         is_fair: bool = None,
         device: str = None,
     ) -> None:
-        """Update args.
-        
-        Args:
-            n_epochs: number of epochs.
-            lr: learning rate.
-            weight_decay: weight decay.
-            max_non_improve: maximum number of epochs to keep training if no improvement.
-            is_fair: whether to use fair diffusion.
-            device: device.
-        """
         if n_epochs is not None:
             self.n_epochs = n_epochs
         if lr is not None:
@@ -70,33 +50,16 @@ class XYCTabTrainer:
             self.device = torch.device(device)
 
     def prepare_model(self, model: GaussianMultinomialDiffusion):
-        """Prepare model.
-        
-        Args:
-            model: diffusion model.
-        """
         self.model = model
         self.model.to(self.device)
 
     def prepare_data(self, data: XYCTabDataModule):
-        """Prepare data.
-        
-        Args:
-            data: data module that has `get_train_loader`, `get_val_loader`, and `get_test_loader` methods and more.
-        """
         self.data = data
         self.train_loader = data.get_train_loader()
         self.val_loader = data.get_val_loader()
         self.test_loader = data.get_test_loader()
         
     def fit(self, model: GaussianMultinomialDiffusion, data: XYCTabDataModule, exp_dir: str = None):
-        """Fit.
-        
-        Args:
-            model: diffusion model.
-            data: data module that has `get_train_loader`, `get_val_loader`, and `get_test_loader` methods and more.
-            exp_dir: directory to save model.
-        """
         # prepare
         self.prepare_model(model)
         self.prepare_data(data)
@@ -137,11 +100,6 @@ class XYCTabTrainer:
         print('training complete ^_^')
     
     def save_model(self, path: str) -> None:
-        """Save model.
-        
-        Args:
-            path: path to save model.
-        """
         torch.save(self.model.state_dict(), path)
     
     def _fit_epoch(self, model: callable, data_loader: torch.utils.data.DataLoader) -> tuple:
@@ -196,7 +154,6 @@ class XYCTabTrainer:
         lr = self.lr * (1 - frac_done / 2)
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
-
 
 def _test() -> None:
     # configs
@@ -269,7 +226,6 @@ def _test() -> None:
         device=device,
     )
     trainer.fit(diffusion, data)
-
 
 if __name__ == '__main__':
     _test()
