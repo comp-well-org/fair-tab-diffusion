@@ -72,6 +72,11 @@ class XYCTabDataModule:
             _, y_dist = torch.unique(torch.from_numpy(y_train[:, i]), return_counts=True)
             answer.append(y_dist.float())
         return answer
+    
+    def get_feature_label_cols(self) -> tuple:
+        feature = pd.read_csv(os.path.join(self.root, 'x_train.csv'), index_col=0)
+        label = pd.read_csv(os.path.join(self.root, 'y_train.csv'), index_col=0)
+        return feature.columns.tolist(), label.columns.tolist()
 
 def timestep_embedding(timesteps: torch.Tensor, dim: int, max_period: float = 10000.0) -> torch.Tensor:
     """Create sinusoidal timestep embeddings.

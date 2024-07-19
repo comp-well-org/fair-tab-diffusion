@@ -11,7 +11,6 @@ mode = 'unet'
 device = 'cuda'
 home = '/rdf/experiments/fair-tab-diffusion-exps/'
 seed = 2023
-n_seeds = 5
 fair = true
 
 [guid]
@@ -46,5 +45,6 @@ max_non_improve = 500
 
 [sample]
 dist = 'fair'
-n_samples = 5000
-batch_size = 1000
+n_samples = 200
+batch_size = 100
+n_seeds = 2

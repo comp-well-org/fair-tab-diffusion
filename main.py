@@ -6,6 +6,8 @@ import json
 import torch
 import shutil
 import numpy as np
+import pandas as pd
+import skops.io as sio
 from src.diffusion.utils import XYCTabDataModule
 from src.diffusion.estimator import PosteriorEstimator, DenoiseFn
 from src.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
@@ -29,6 +31,9 @@ def copy_file(exp_dir, config_path) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--train', action='store_true', help='training')
+    parser.add_argument('--sample', action='store_true', help='sampling')
+    parser.add_argument('--override', action='store_true', help='override existing model')
     
     args = parser.parse_args()
     if args.config:
@@ -51,8 +56,6 @@ def main():
     
     # random seed
     seed = exp_config['seed']
-    n_seeds = exp_config['n_seeds']
-    assert n_seeds > 0, '`n_seeds` must be greater than 0'
     torch.manual_seed(seed)
     
     # experimental directory
@@ -62,25 +65,28 @@ def main():
         data_config['name'],
         exp_config['method'],
     )
-    
     copy_file(
         os.path.join(exp_dir), 
         args.config,
     )
     
+    # data
     data_module = XYCTabDataModule(
         root=os.path.join(data_config['path'], data_config['name']),
         batch_size=data_config['batch_size'],
     )
-
     data_desc = data_module.get_data_description()
+    norm_fn = data_module.get_norm_fn()
+    empirical_dist = data_module.get_empirical_dist()
 
+    # arguments determined by data
     d_oh_x = data_desc['d_oh_x']
     d_num_x = data_desc['d_num_x']
     n_channels = data_desc['n_channels']
     n_unq_c_lst = data_desc['n_unq_c_lst']
     n_unq_cat_od_x_lst = data_desc['n_unq_cat_od_x_lst']
     
+    # fairness
     is_fair = exp_config['fair']
     cond_emb_factor = 3 if is_fair else 2
     
@@ -134,17 +140,74 @@ def main():
         gaussian_parametrization=model_config['parametrization'],
     )
     
-    # train ^_^
-    train_config = config['train']
-    trainer = XYCTabTrainer(
-        n_epochs=train_config['n_epochs'],
-        lr=train_config['lr'],
-        weight_decay=train_config['weight_decay'],
-        max_non_improve=train_config['max_non_improve'],
-        is_fair=is_fair,
-        device=exp_config['device'],
-    )
-    trainer.fit(diffusion, data_module, exp_dir)
+    if args.train:
+        if not args.override and os.path.exists(os.path.join(exp_dir, 'diffusion.pt')):
+            raise ValueError(f'{os.path.join(exp_dir, "diffusion.pt")} already exists')
+        # train ^_^
+        train_config = config['train']
+        trainer = XYCTabTrainer(
+            n_epochs=train_config['n_epochs'],
+            lr=train_config['lr'],
+            weight_decay=train_config['weight_decay'],
+            max_non_improve=train_config['max_non_improve'],
+            is_fair=is_fair,
+            device=exp_config['device'],
+        )
+        trainer.fit(diffusion, data_module, exp_dir)
+    
+    if args.sample:
+        # load model
+        diffusion.load_state_dict(torch.load(os.path.join(exp_dir, 'diffusion.pt')))
+        diffusion.to(exp_config['device'])
+        diffusion.eval()
+        
+        # config for sampling
+        sample_config = config['sample']
+        n_seeds = sample_config['n_seeds']
+        assert n_seeds > 0, '`n_seeds` must be greater than 0'
+        
+        # distribution of conditionals
+        assert sample_config['dist'] in {'uniform', 'empirical', 'fair'}
+        if sample_config['dist'] == 'uniform':
+            cond_dist = [torch.ones(n) for n in n_unq_c_lst]
+        elif sample_config['dist'] == 'empirical':
+            cond_dist = empirical_dist
+        elif sample_config['dist'] == 'fair':
+            cond_dist = [torch.ones(n) for n in n_unq_c_lst]
+            cond_dist[0] = empirical_dist[0]
+        
+        feature_cols, label_cols = data_module.get_feature_label_cols()
+        
+        # sampling with seeds
+        for i in range(n_seeds):
+            random_seed = seed + i
+            torch.manual_seed(random_seed)
+            xn, cond = diffusion.sample_all(
+                sample_config['n_samples'],
+                cond_dist,
+                batch_size=sample_config['batch_size'],
+            )
+            print(f'synthetic data shape: {list(xn.shape)}, synthetic cond shape: {list(cond.shape)}')
+            
+            # inverse normalization
+            x_num = norm_fn.inverse_transform(xn[:, :d_num_x])
+            x_syn = np.concatenate([x_num, xn[:, d_num_x:]], axis=1)
+            x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+            xn_syn = pd.DataFrame(xn, columns=feature_cols)
+            y_syn = pd.DataFrame(cond, columns=label_cols)
+            
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            if not os.path.exists(synth_dir):
+                os.makedirs(synth_dir)
+            x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+            xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+            y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        
+        # copy `data_desc` as json file and `norm_fn` as skops file
+        synth_dir = os.path.join(exp_dir, 'synthesis')
+        with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
+            json.dump(data_desc, f, indent=4)
+        sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
 
 if __name__ == '__main__':
     main()
