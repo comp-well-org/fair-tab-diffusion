@@ -10,7 +10,7 @@ method = 'fair-tab-ddpm'
 mode = 'unet'
 device = 'cuda'
 home = '/rdf/experiments/fair-tab-diffusion-exps/'
-seed = 2023
+seed = 2024
 fair = true
 
 [guid]
@@ -47,4 +47,7 @@ max_non_improve = 500
 dist = 'fair'
 n_samples = 200
 batch_size = 100
-n_seeds = 2
+n_seeds = 1
+
+[eval]
+sk_clf_choice = ['CatBoost']

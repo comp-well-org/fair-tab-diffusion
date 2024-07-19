@@ -1,10 +1,10 @@
-import argparse
-import warnings
-import tomli
 import os
 import json
 import torch
+import tomli
 import shutil
+import argparse
+import warnings
 import numpy as np
 import pandas as pd
 import skops.io as sio
@@ -14,6 +14,8 @@ from src.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
 from src.diffusion.unet import Unet
 from src.diffusion.ddpm import GaussianMultinomialDiffusion
 from src.diffusion.trainer import XYCTabTrainer
+from src.evaluate.skmodels import default_sk_clf
+from sklearn.metrics import roc_auc_score
 
 warnings.filterwarnings('ignore')
 
@@ -33,6 +35,7 @@ def main():
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--train', action='store_true', help='training')
     parser.add_argument('--sample', action='store_true', help='sampling')
+    parser.add_argument('--eval', action='store_true', help='evaluation')
     parser.add_argument('--override', action='store_true', help='override existing model')
     
     args = parser.parse_args()
@@ -46,6 +49,11 @@ def main():
     guid_config = config['guid']
     data_config = config['data']
     model_config = config['model']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    # number of random seeds for sampling
+    n_seeds = sample_config['n_seeds']
     
     # message
     print(json.dumps(config, indent=4))
@@ -160,10 +168,6 @@ def main():
         diffusion.load_state_dict(torch.load(os.path.join(exp_dir, 'diffusion.pt')))
         diffusion.to(exp_config['device'])
         diffusion.eval()
-        
-        # config for sampling
-        sample_config = config['sample']
-        n_seeds = sample_config['n_seeds']
         assert n_seeds > 0, '`n_seeds` must be greater than 0'
         
         # distribution of conditionals
@@ -208,6 +212,41 @@ def main():
         with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
             json.dump(data_desc, f, indent=4)
         sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
+    
+    if args.eval:
+        # read validation data
+        x_eval = pd.read_csv(
+            os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+            index_col=0,
+        )
+        c_eval = pd.read_csv(
+            os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+            index_col=0,
+        )
+        y_eval = c_eval.iloc[:, 0]
+        
+        # evaluate classifiers trained on synthetic data
+        metric = {}
+        for clf_choice in eval_config['sk_clf_choice']:
+            aucs = []
+            for i in range(n_seeds):
+                random_seed = seed + i
+                synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+                
+                # read synthetic data
+                x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+                xn_syn = pd.read_csv(os.path.join(synth_dir, 'xn_syn.csv'), index_col=0)
+                c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+                y_syn = c_syn.iloc[:, 0]
+                
+                # train classifier
+                clf = default_sk_clf(clf_choice, random_seed)
+                clf.fit(x_syn, y_syn)
+                y_pred = clf.predict_proba(x_eval)[:, 1]
+                aucs.append(roc_auc_score(y_eval, y_pred))
+            metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+        with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+            json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()
