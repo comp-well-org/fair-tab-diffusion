@@ -2,6 +2,7 @@ import argparse
 import warnings
 import tomli
 import os
+import json
 import torch
 import shutil
 import numpy as np
@@ -42,7 +43,7 @@ def main():
     model_config = config['model']
     
     # message
-    print(f'experiment: {exp_config["name"]}')
+    print(json.dumps(config, indent=4))
     print('-' * 80)
     
     # whether to use fair diffusion model
