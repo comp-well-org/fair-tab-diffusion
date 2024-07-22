@@ -1,4 +1,5 @@
 import os
+import time
 import json
 import torch
 import tomli
@@ -151,7 +152,7 @@ def main():
     if args.train:
         if not args.override and os.path.exists(os.path.join(exp_dir, 'diffusion.pt')):
             raise ValueError(f'{os.path.join(exp_dir, "diffusion.pt")} already exists')
-        # train ^_^
+        # train
         train_config = config['train']
         trainer = XYCTabTrainer(
             n_epochs=train_config['n_epochs'],
@@ -161,7 +162,12 @@ def main():
             is_fair=is_fair,
             device=exp_config['device'],
         )
+        start_time = time.time()
         trainer.fit(diffusion, data_module, exp_dir)
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+            time_msg = f'time: {end_time - start_time:.2f} sec'
+            f.write(time_msg)
     
     if args.sample:
         # load model
