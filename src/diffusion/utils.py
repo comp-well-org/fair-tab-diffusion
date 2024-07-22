@@ -46,6 +46,7 @@ class XYCTabDataModule:
         self, 
         flag: str,
         normalize: bool = True,
+        subset: float = 1.0,
     ) -> DataLoader:
         assert flag in ['train', 'eval', 'test']
         if normalize:
@@ -61,6 +62,10 @@ class XYCTabDataModule:
         y_file = os.path.join(self.root, y_filename)
         x = pd.read_csv(x_file, index_col=0)
         y = pd.read_csv(y_file, index_col=0)
+        if subset < 1.0:
+            n = int(subset * len(x))
+            x = x.iloc[:n]
+            y = y.iloc[:n]
         dataset = XYCTabDataset(x, y)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
         return dataloader

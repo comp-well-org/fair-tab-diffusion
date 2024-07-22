@@ -16,24 +16,15 @@ from src.diffusion.unet import Unet
 from src.diffusion.ddpm import GaussianMultinomialDiffusion
 from src.diffusion.trainer import XYCTabTrainer
 from src.evaluate.skmodels import default_sk_clf
+from lib import load_config, copy_file
 from sklearn.metrics import roc_auc_score
 
 warnings.filterwarnings('ignore')
 
-def load_config(path) -> dict:
-    with open(path, 'rb') as f:
-        return tomli.load(f)
-    
-def copy_file(exp_dir, config_path) -> None:
-    if not os.path.exists(exp_dir):
-        os.makedirs(exp_dir)
-        shutil.copy(config_path, exp_dir)
-    else:
-        shutil.copy(config_path, exp_dir)
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
     parser.add_argument('--train', action='store_true', help='training')
     parser.add_argument('--sample', action='store_true', help='sampling')
     parser.add_argument('--eval', action='store_true', help='evaluation')
@@ -70,9 +61,9 @@ def main():
     # experimental directory
     exp_dir = os.path.join(
         exp_config['home'], 
-        exp_config['name'], 
         data_config['name'],
         exp_config['method'],
+        args.exp_name,
     )
     copy_file(
         os.path.join(exp_dir), 

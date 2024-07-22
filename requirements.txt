@@ -43,3 +43,4 @@ dash
 
 # utilities
 tomli
+tomli_w
