@@ -120,7 +120,6 @@ class FairBalance:
             dfs.append(Xi_res)
         X_cres = pd.concat(list(dfs), ignore_index=True)
         return X_cres[self.features], X_cres[self.target]
-<<<<<<< HEAD
 
 def balancing(x_train, target, knn, sensitive_attribute, features, drop_features, continous_features):
     fcb = FairBalance(
@@ -177,5 +176,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-=======
->>>>>>> 92d31836236700bf0a18a9f7a60616bb1852aabd
