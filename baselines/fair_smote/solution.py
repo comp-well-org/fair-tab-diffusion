@@ -5,12 +5,9 @@ from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import silhouette_score, silhouette_samples
 from imblearn.over_sampling import SMOTENC
-<<<<<<< HEAD
 import warnings
 
 warnings.filterwarnings('ignore')
-=======
->>>>>>> 92d31836236700bf0a18a9f7a60616bb1852aabd
 
 class FairBalance:
     def __init__(
