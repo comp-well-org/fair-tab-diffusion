@@ -18,6 +18,7 @@ catboost
 optuna
 statsmodels
 bioread
+imblearn
 
 # natural language processing
 nltk

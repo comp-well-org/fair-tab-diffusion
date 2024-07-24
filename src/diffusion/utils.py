@@ -36,11 +36,21 @@ class XYCTabDataModule:
     def get_norm_fn(self) -> callable:
         fn = sio.load(os.path.join(self.root, 'fn.skops'))
         return fn
+    
+    def get_cat_label_mapping(self) -> tuple:
+        cat_mapping = sio.load(os.path.join(self.root, 'cat_encoder.skops'))
+        label_mapping = sio.load(os.path.join(self.root, 'label_encoder.skops'))
+        return cat_mapping, label_mapping
 
     def get_data_description(self) -> dict:
         with open(os.path.join(self.root, 'desc.json'), 'r') as f:
             description = json.load(f)
         return description
+    
+    def inverse_transform(self, xn, y):
+        # TODO: implement this
+        # read desc, cat_mapping, label_mapping, fn, and then inverse transform xn and y
+        pass
     
     def get_dataloader(
         self, 

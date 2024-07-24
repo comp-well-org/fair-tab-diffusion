@@ -29,6 +29,7 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None
     data_all = data_all.dropna()
 
     label_ord_enc = OrdinalEncoder()
+    data_all_cp = data_all.copy()
     data_all['label'] = label_ord_enc.fit_transform(data_all[['class']])
     features, labels = data_all[feature_columns], data_all['label']
 
@@ -101,10 +102,18 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None
     xn_train = pd.concat([x_num_train_norm, x_train.iloc[:, d_num_x:]], axis=1)
     xn_eval = pd.concat([x_num_eval_norm, x_eval.iloc[:, d_num_x:]], axis=1)
     xn_test = pd.concat([x_num_test_norm, x_test.iloc[:, d_num_x:]], axis=1)
+    
+    data_train = data_all_cp.loc[x_train.index]
+    data_eval = data_all_cp.loc[x_eval.index]
+    data_test = data_all_cp.loc[x_test.index]
 
     if dir_path:
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
+        data_all_cp.to_csv(f'{dir_path}/d_all.csv', index=True)
+        data_train.to_csv(f'{dir_path}/d_train.csv', index=True)
+        data_eval.to_csv(f'{dir_path}/d_eval.csv', index=True)
+        data_test.to_csv(f'{dir_path}/d_test.csv', index=True)
         feature_df.to_csv(f'{dir_path}/x_all.csv', index=True)
         label_df.to_csv(f'{dir_path}/y_all.csv', index=True)
         x_train.to_csv(f'{dir_path}/x_train.csv', index=True)
@@ -117,11 +126,14 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None
         xn_eval.to_csv(f'{dir_path}/xn_eval.csv', index=True)
         xn_test.to_csv(f'{dir_path}/xn_test.csv', index=True)
         sio.dump(normalizer, f'{dir_path}/fn.skops')
+        sio.dump(cat_ord_enc, f'{dir_path}/cat_encoder.skops')
+        sio.dump(label_ord_enc, f'{dir_path}/label_encoder.skops')
         with open(f'{dir_path}/desc.json', 'w') as f:
             json.dump(data_desc.desc, f, indent=4)
     
     return {
         'desc': data_desc.desc,
+        'data_all': data_all,
         'x_all': feature_df,
         'y_all': label_df,
         'x_train': x_train,
@@ -134,4 +146,6 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None
         'xn_eval': xn_eval,
         'xn_test': xn_test,
         'normalizer': normalizer,
+        'cat_encoder': cat_ord_enc,
+        'label_encoder': label_ord_enc,
     }
