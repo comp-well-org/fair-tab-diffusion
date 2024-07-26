@@ -1,0 +1,1 @@
+python main_todo.py --config ../../args/adult/tab-fair-gan/config.toml
