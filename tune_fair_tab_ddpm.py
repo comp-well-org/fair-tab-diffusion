@@ -25,7 +25,7 @@ def main():
     
     def objective(trial):        
         lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
-        n_epochs = trial.suggest_categorical('n_epochs', [500, 4000])
+        n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
         n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
         
         base_config = lib.load_config(base_config_path)
