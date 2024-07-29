@@ -870,7 +870,9 @@ def train_diffusion_model(
 # TODO: implement this function
 def sampling_synthetic_data():
     pass
-    
+
+################################################################################
+# main
 def main():
     # global variables
     WD = 0
