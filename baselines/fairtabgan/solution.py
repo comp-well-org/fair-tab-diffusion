@@ -309,7 +309,7 @@ def main():
     all_df[S] = all_df[S].astype(object)
     all_df[Y] = all_df[Y].astype(object)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:1')
     
     solution = train(
         all_df, S, Y, S_under, Y_desire,

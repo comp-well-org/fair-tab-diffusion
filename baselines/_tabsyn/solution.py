@@ -1,13 +1,16 @@
 import os
 import math
+import time
 import json
 import torch
+import warnings
+import torch.optim
 import numpy as np
 import pandas as pd
-import warnings
 import torch.nn as nn
 import torch.nn.init as nn_init
 import torch.nn.functional as F
+from tqdm import tqdm
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -18,7 +21,6 @@ warnings.filterwarnings('ignore')
 # data
 class TabularDataset(Dataset):
     def __init__(self, x_num, x_cat):
-        # if numpy array then convert to tensor
         if isinstance(x_num, np.ndarray):
             x_num = torch.from_numpy(x_num).float()
         if isinstance(x_cat, np.ndarray):
@@ -35,7 +37,6 @@ class TabularDataset(Dataset):
     def __len__(self):
         return self.x_num.shape[0]
 
-# TODO: implement this function
 def preprocess(data_dir):
     xn_train = pd.read_csv(os.path.join(data_dir, 'xn_train.csv'), index_col=0)
     xn_eval = pd.read_csv(os.path.join(data_dir, 'xn_eval.csv'), index_col=0)
@@ -229,14 +230,14 @@ class Transformer(nn.Module):
             layer = nn.ModuleDict(
                 {
                     'attention': MultiheadAttention(
-                        d_token, n_heads, attention_dropout, initialization
+                        d_token, n_heads, attention_dropout, initialization,
                     ),
                     'linear0': nn.Linear(
                         d_token, d_hidden,
                     ),
                     'linear1': nn.Linear(d_hidden, d_token),
                     'norm1': make_normalization(),
-                }
+                },
             )
             if not prenormalization or layer_idx:
                 layer['norm0'] = make_normalization()
@@ -407,35 +408,576 @@ class DecoderModel(nn.Module):
         x_hat_num, x_hat_cat = self.Detokenizer(h)
         return x_hat_num, x_hat_cat
 
+class SiLU(nn.Module):
+    def forward(self, x):
+        return x * torch.sigmoid(x)
+
+class PositionalEmbedding(torch.nn.Module):
+    def __init__(self, num_channels, max_positions=10000, endpoint=False):
+        super().__init__()
+        self.num_channels = num_channels
+        self.max_positions = max_positions
+        self.endpoint = endpoint
+
+    def forward(self, x):
+        freqs = torch.arange(start=0, end=self.num_channels//2, dtype=torch.float32, device=x.device)
+        freqs = freqs / (self.num_channels // 2 - (1 if self.endpoint else 0))
+        freqs = (1 / self.max_positions) ** freqs
+        x = x.ger(freqs.to(x.dtype))
+        x = torch.cat([x.cos(), x.sin()], dim=1)
+        return x
+
+def reglu(x: Tensor) -> Tensor:
+    assert x.shape[-1] % 2 == 0
+    a, b = x.chunk(2, dim=-1)
+    return a * F.relu(b)
+
+def geglu(x: Tensor) -> Tensor:
+    assert x.shape[-1] % 2 == 0
+    a, b = x.chunk(2, dim=-1)
+    return a * F.gelu(b)
+
+class ReGLU(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        return reglu(x)
+
+class GEGLU(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        return geglu(x)
+
+class FourierEmbedding(torch.nn.Module):
+    def __init__(self, num_channels, scale=16):
+        super().__init__()
+        self.register_buffer('freqs', torch.randn(num_channels // 2) * scale)
+
+    def forward(self, x):
+        x = x.ger((2 * np.pi * self.freqs).to(x.dtype))
+        x = torch.cat([x.cos(), x.sin()], dim=1)
+        return x
+
+class MLPDiffusion(nn.Module):
+    def __init__(self, d_in, dim_t=512):
+        super().__init__()
+        self.dim_t = dim_t
+
+        self.proj = nn.Linear(d_in, dim_t)
+
+        self.mlp = nn.Sequential(
+            nn.Linear(dim_t, dim_t * 2),
+            nn.SiLU(),
+            nn.Linear(dim_t * 2, dim_t * 2),
+            nn.SiLU(),
+            nn.Linear(dim_t * 2, dim_t),
+            nn.SiLU(),
+            nn.Linear(dim_t, d_in),
+        )
+
+        self.map_noise = PositionalEmbedding(num_channels=dim_t)
+        self.time_embed = nn.Sequential(
+            nn.Linear(dim_t, dim_t),
+            nn.SiLU(),
+            nn.Linear(dim_t, dim_t),
+        )
+    
+    def forward(self, x, noise_labels, class_labels=None):
+        emb = self.map_noise(noise_labels)
+        emb = emb.reshape(emb.shape[0], 2, -1).flip(1).reshape(*emb.shape)
+        emb = self.time_embed(emb)
+    
+        x = self.proj(x) + emb
+        return self.mlp(x)
+
+class Precond(nn.Module):
+    def __init__(
+        self,
+        denoise_fn,
+        hid_dim,
+        sigma_min=0,                
+        sigma_max=float('inf'),     
+        sigma_data=0.5,             
+    ):
+        super().__init__()
+        self.hid_dim = hid_dim
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.sigma_data = sigma_data
+        self.denoise_fn_F = denoise_fn
+
+    def forward(self, x, sigma):
+        x = x.to(torch.float32)
+
+        sigma = sigma.to(torch.float32).reshape(-1, 1)
+        dtype = torch.float32
+
+        c_skip = self.sigma_data ** 2 / (sigma ** 2 + self.sigma_data ** 2)
+        c_out = sigma * self.sigma_data / (sigma ** 2 + self.sigma_data ** 2).sqrt()
+        c_in = 1 / (self.sigma_data ** 2 + sigma ** 2).sqrt()
+        c_noise = sigma.log() / 4
+
+        x_in = c_in * x
+        F_x = self.denoise_fn_F((x_in).to(dtype), c_noise.flatten())
+
+        assert F_x.dtype == dtype
+        d_x = c_skip * x + c_out * F_x.to(torch.float32)
+        return d_x
+
+    def round_sigma(self, sigma):
+        return torch.as_tensor(sigma)
+    
+class Model(nn.Module):
+    def __init__(self, denoise_fn, hid_dim, p_mean=-1.2, p_std=1.2, sigma_data=0.5, gamma=5, opts=None, pfgmpp=False):
+        super().__init__()
+        self.denoise_fn_D = Precond(denoise_fn, hid_dim)
+        self.loss_fn = EDMLoss(p_mean, p_std, sigma_data, hid_dim=hid_dim, gamma=5, opts=None)
+
+    def forward(self, x):
+        loss = self.loss_fn(self.denoise_fn_D, x)
+        return loss.mean(-1).mean()
+
 ################################################################################
-# training
-def train_model(model):
+# diffusion utils
+SIGMA_MIN = 0.002
+SIGMA_MAX = 80
+RHO = 7
+S_CHURN = 1
+S_MIN = 0
+S_MAX = float('inf')
+S_NOISE = 1
+
+def sample(net, num_samples, dim, num_steps=50, device='cuda:0'):
+    latents = torch.randn([num_samples, dim], device=device)
+
+    step_indices = torch.arange(num_steps, dtype=torch.float32, device=latents.device)
+
+    sigma_min = max(SIGMA_MIN, net.sigma_min)
+    sigma_max = min(SIGMA_MAX, net.sigma_max)
+
+    t_steps = (sigma_max ** (1 / RHO) + step_indices / (num_steps - 1) * (sigma_min ** (1 / RHO) - sigma_max ** (1 / RHO))) ** RHO
+    t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])])
+
+    x_next = latents.to(torch.float32) * t_steps[0]
+
+    with torch.no_grad():
+        for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
+            x_next = sample_step(net, num_steps, i, t_cur, t_next, x_next)
+
+    return x_next
+
+def sample_step(net, num_steps, i, t_cur, t_next, x_next):
+    x_cur = x_next
+    
+    # increase noise temporarily
+    gamma = min(S_CHURN / num_steps, np.sqrt(2) - 1) if S_MIN <= t_cur <= S_MAX else 0
+    t_hat = net.round_sigma(t_cur + gamma * t_cur) 
+    x_hat = x_cur + (t_hat ** 2 - t_cur ** 2).sqrt() * S_NOISE * torch.randn_like(x_cur)
+    
+    # euler step
+    denoised = net(x_hat, t_hat).to(torch.float32)
+    d_cur = (x_hat - denoised) / t_hat
+    x_next = x_hat + (t_next - t_hat) * d_cur
+
+    # apply 2nd order correction
+    if i < num_steps - 1:
+        denoised = net(x_next, t_next).to(torch.float32)
+        d_prime = (x_next - denoised) / t_next
+        x_next = x_hat + (t_next - t_hat) * (0.5 * d_cur + 0.5 * d_prime)
+
+    return x_next
+
+class VPLoss:
+    def __init__(self, beta_d=19.9, beta_min=0.1, epsilon_t=1e-5):
+        self.beta_d = beta_d
+        self.beta_min = beta_min
+        self.epsilon_t = epsilon_t
+
+    def __call__(self, denosie_fn, data, labels, augment_pipe=None):
+        rnd_uniform = torch.rand([data.shape[0], 1, 1, 1], device=data.device)
+        sigma = self.sigma(1 + rnd_uniform * (self.epsilon_t - 1))
+        weight = 1 / sigma ** 2
+        y, augment_labels = augment_pipe(data) if augment_pipe is not None else (data, None)
+        n = torch.randn_like(y) * sigma
+        D_yn = denosie_fn(y + n, sigma, labels, augment_labels=augment_labels)
+        loss = weight * ((D_yn - y) ** 2)
+        return loss
+
+    def sigma(self, t):
+        t = torch.as_tensor(t)
+        return ((0.5 * self.beta_d * (t ** 2) + self.beta_min * t).exp() - 1).sqrt()
+
+class VELoss:
+    def __init__(self, sigma_min=0.02, sigma_max=100, d=128, n=3072, opts=None):
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.D = d
+        self.N = n
+
+    def __call__(self, denosie_fn, data, labels=None, augment_pipe=None, stf=False, pfgmpp=False, ref_data=None):
+        if pfgmpp:
+            rnd_uniform = torch.rand(data.shape[0], device=data.device)
+            sigma = self.sigma_min * ((self.sigma_max / self.sigma_min) ** rnd_uniform)
+
+            r = sigma.double() * np.sqrt(self.D).astype(np.float64)
+            # sampling form inverse-beta distribution
+            samples_norm = np.random.beta(a=self.N / 2., b=self.D / 2., size=data.shape[0]).astype(np.double)
+
+            samples_norm = np.clip(samples_norm, 1e-3, 1-1e-3)
+
+            inverse_beta = samples_norm / (1 - samples_norm + 1e-8)
+            inverse_beta = torch.from_numpy(inverse_beta).to(data.device).double()
+            # sampling from p_r(R) by change-of-variable
+            samples_norm = r * torch.sqrt(inverse_beta + 1e-8)
+            samples_norm = samples_norm.view(len(samples_norm), -1)
+            
+            # uniformly sample the angle direction
+            gaussian = torch.randn(data.shape[0], self.N).to(samples_norm.device)
+            unit_gaussian = gaussian / torch.norm(gaussian, p=2, dim=1, keepdim=True)
+            
+            # construct the perturbation for x
+            perturbation_x = unit_gaussian * samples_norm
+            perturbation_x = perturbation_x.float()
+
+            sigma = sigma.reshape((len(sigma), 1, 1, 1))
+            weight = 1 / sigma ** 2
+            y, augment_labels = augment_pipe(data) if augment_pipe is not None else (data, None)
+            n = perturbation_x.view_as(y)
+            D_yn = denosie_fn(y + n, sigma, labels,  augment_labels=augment_labels)
+        else:
+            rnd_uniform = torch.rand([data.shape[0], 1, 1, 1], device=data.device)
+            sigma = self.sigma_min * ((self.sigma_max / self.sigma_min) ** rnd_uniform)
+            weight = 1 / sigma ** 2
+            y, augment_labels = augment_pipe(data) if augment_pipe is not None else (data, None)
+            n = torch.randn_like(y) * sigma
+            D_yn = denosie_fn(y + n, sigma, labels, augment_labels=augment_labels)
+
+        loss = weight * ((D_yn - y) ** 2)
+        return loss
+
+class EDMLoss:
+    def __init__(self, p_mean=-1.2, p_std=1.2, sigma_data=0.5, hid_dim=100, gamma=5, opts=None):
+        self.P_mean = p_mean
+        self.P_std = p_std
+        self.sigma_data = sigma_data
+        self.hid_dim = hid_dim
+        self.gamma = gamma
+        self.opts = opts
+
+    def __call__(self, denoise_fn, data):
+        rnd_normal = torch.randn(data.shape[0], device=data.device)
+        sigma = (rnd_normal * self.P_std + self.P_mean).exp()
+
+        weight = (sigma ** 2 + self.sigma_data ** 2) / (sigma * self.sigma_data) ** 2
+
+        y = data
+        n = torch.randn_like(y) * sigma.unsqueeze(1)
+        D_yn = denoise_fn(y + n, sigma)
+    
+        target = y
+        loss = weight.unsqueeze(1) * ((D_yn - target) ** 2)
+        return loss
+
+################################################################################
+# latent utils
+def get_input_generate(args):
+    dataname = args.dataname
+
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    dataset_dir = f'data/{dataname}'
+    ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
+
+    with open(f'{dataset_dir}/info.json', 'r') as f:
+        info = json.load(f)
+
+    task_type = info['task_type']
+
+
+    ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
+
+    _, _, categories, d_numerical, num_inverse, cat_inverse = preprocess(dataset_dir, task_type = task_type, inverse = True)
+
+    embedding_save_path = f'{curr_dir}/vae/ckpt/{dataname}/train_z.npy'
+    train_z = torch.tensor(np.load(embedding_save_path)).float()
+
+    train_z = train_z[:, 1:, :]
+
+    B, num_tokens, token_dim = train_z.size()
+    in_dim = num_tokens * token_dim
+    
+    train_z = train_z.view(B, in_dim)
+    pre_decoder = Decoder_model(2, d_numerical, categories, 4, n_head = 1, factor = 32)
+
+    decoder_save_path = f'{curr_dir}/vae/ckpt/{dataname}/decoder.pt'
+    pre_decoder.load_state_dict(torch.load(decoder_save_path))
+
+    info['pre_decoder'] = pre_decoder
+    info['token_dim'] = token_dim
+
+    return train_z, curr_dir, dataset_dir, ckpt_dir, info, num_inverse, cat_inverse
+
+@torch.no_grad()
+def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device):
+    task_type = info['task_type']
+
+    num_col_idx = info['num_col_idx']
+    cat_col_idx = info['cat_col_idx']
+    target_col_idx = info['target_col_idx']
+
+    n_num_feat = len(num_col_idx)
+    n_cat_feat = len(cat_col_idx)
+
+    if task_type == 'regression':
+        n_num_feat += len(target_col_idx)
+    else:
+        n_cat_feat += len(target_col_idx)
+
+    pre_decoder = info['pre_decoder']
+    token_dim = info['token_dim']
+
+    syn_data = syn_data.reshape(syn_data.shape[0], -1, token_dim)
+    
+    norm_input = pre_decoder(torch.tensor(syn_data))
+    x_hat_num, x_hat_cat = norm_input
+
+    syn_cat = []
+    for pred in x_hat_cat:
+        syn_cat.append(pred.argmax(dim = -1))
+
+    syn_num = x_hat_num.cpu().numpy()
+    syn_cat = torch.stack(syn_cat).t().cpu().numpy()
+
+    syn_num = num_inverse(syn_num)
+    syn_cat = cat_inverse(syn_cat)
+
+    if info['task_type'] == 'regression':
+        syn_target = syn_num[:, :len(target_col_idx)]
+        syn_num = syn_num[:, len(target_col_idx):]
+    
+    else:
+        print(syn_cat.shape)
+        syn_target = syn_cat[:, :len(target_col_idx)]
+        syn_cat = syn_cat[:, len(target_col_idx):]
+
+    return syn_num, syn_cat, syn_target
+
+def recover_data():
     pass
 
 ################################################################################
+# training
+def compute_loss(x_num, x_cat, recon_x_num, recon_x_cat, mu_z, logvar_z):
+    ce_loss_fn = nn.CrossEntropyLoss()
+    mse_loss = (x_num - recon_x_num).pow(2).mean()
+    ce_loss = 0
+
+    for _, x_cat in enumerate(recon_x_cat):
+        if x_cat is not None:
+            x_hat = x_cat.argmax(dim=-1)
+            ce_loss += ce_loss_fn(x_cat, x_hat)
+    
+    ce_loss /= len(recon_x_cat)
+    temp = 1 + logvar_z - mu_z.pow(2) - logvar_z.exp()
+    loss_kld = -0.5 * torch.mean(temp.mean(-1).mean())
+    return mse_loss, ce_loss, loss_kld
+
+def train_latent_model(
+    model, pre_encoder, pre_decoder, optimizer, scheduler, num_epochs,
+    train_loader, x_train_num, x_train_cat, x_eval_num, x_eval_cat,
+    model_save_path, encoder_save_path, decoder_save_path, ckpt_dir,
+    min_beta, max_beta, lambd, 
+    device, 
+):
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+        
+    best_train_loss = float('inf')
+
+    current_lr = optimizer.param_groups[0]['lr']
+    patience = 0
+
+    beta = max_beta
+    start_time = time.time()
+    
+    for epoch in range(num_epochs):
+        pbar = tqdm(train_loader, total=len(train_loader))
+        pbar.set_description(f'epoch {epoch+1}/{num_epochs}')
+
+        curr_loss_multi = 0.0
+        curr_loss_gauss = 0.0
+        curr_loss_kl = 0.0
+
+        curr_count = 0
+
+        for batch_num, batch_cat in pbar:
+            model.train()
+            optimizer.zero_grad()
+
+            batch_num = batch_num.to(device)
+            batch_cat = batch_cat.to(device)
+
+            Recon_X_num, Recon_X_cat, mu_z, std_z = model(batch_num, batch_cat)
+        
+            loss_mse, loss_ce, loss_kld = compute_loss(batch_num, batch_cat, Recon_X_num, Recon_X_cat, mu_z, std_z)
+
+            loss = loss_mse + loss_ce + beta * loss_kld
+            loss.backward()
+            optimizer.step()
+
+            batch_length = batch_num.shape[0]
+            curr_count += batch_length
+            curr_loss_multi += loss_ce.item() * batch_length
+            curr_loss_gauss += loss_mse.item() * batch_length
+            curr_loss_kl += loss_kld.item() * batch_length
+        
+        model.eval()
+        with torch.no_grad():
+            x_eval_num = x_eval_num.to(device)
+            x_eval_cat = x_eval_cat.to(device)
+            Recon_X_num, Recon_X_cat, mu_z, std_z = model(x_eval_num, x_eval_cat)
+
+            val_mse_loss, val_ce_loss, val_kl_loss = compute_loss(x_eval_num, x_eval_cat, Recon_X_num, Recon_X_cat, mu_z, std_z)
+            val_loss = val_mse_loss.item() * 0 + val_ce_loss.item()    
+
+            scheduler.step(val_loss)
+            new_lr = optimizer.param_groups[0]['lr']
+
+            if new_lr != current_lr:
+                current_lr = new_lr
+                
+            train_loss = val_loss
+            if train_loss < best_train_loss:
+                best_train_loss = train_loss
+                patience = 0
+                torch.save(model.state_dict(), model_save_path)
+            else:
+                patience += 1
+                if patience == 10:
+                    if beta > min_beta:
+                        beta = beta * lambd
+
+    end_time = time.time()
+    time_elapsed = end_time - start_time
+    print(f'training time: {time_elapsed:.2f}s')
+    
+    with torch.no_grad():
+        pre_encoder.load_weights(model)
+        pre_decoder.load_weights(model)
+
+        torch.save(pre_encoder.state_dict(), encoder_save_path)
+        torch.save(pre_decoder.state_dict(), decoder_save_path)
+
+        X_train_num = x_train_num.to(device)
+        X_train_cat = x_train_cat.to(device)
+        
+        train_z = pre_encoder(X_train_num, X_train_cat).detach().cpu().numpy()
+        np.save(f'{ckpt_dir}/train_z.npy', train_z)
+
+def get_input_train(ckpt_dataset_dir):
+    embedding_save_path = f'{ckpt_dataset_dir}/train_z.npy'
+    train_z = torch.tensor(np.load(embedding_save_path)).float()
+
+    train_z = train_z[:, 1:, :]
+    B, num_tokens, token_dim = train_z.size()
+    in_dim = num_tokens * token_dim
+    
+    train_z = train_z.view(B, in_dim)
+    return train_z
+
+def train_diffusion_model(
+    model, optimizer, scheduler, num_epochs, train_loader, ckpt_dir, device,
+):
+    model.train()
+
+    best_loss = float('inf')
+    patience = 0
+    start_time = time.time()
+    for epoch in range(num_epochs):
+        
+        pbar = tqdm(train_loader, total=len(train_loader))
+        pbar.set_description(f'epoch {epoch+1}/{num_epochs}')
+
+        batch_loss = 0.0
+        len_input = 0
+        for batch in pbar:
+            inputs = batch.float().to(device)
+            loss = model(inputs)
+        
+            loss = loss.mean()
+
+            batch_loss += loss.item() * len(inputs)
+            len_input += len(inputs)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            pbar.set_postfix({'loss': loss.item()})
+
+        curr_loss = batch_loss/len_input
+        scheduler.step(curr_loss)
+
+        if curr_loss < best_loss:
+            best_loss = curr_loss
+            patience = 0
+            torch.save(model.state_dict(), f'{ckpt_dir}/diffusion.pt')
+        else:
+            patience += 1
+            if patience == 500:
+                print('early stopping')
+                break
+
+    end_time = time.time()
+    time_elapsed = end_time - start_time
+    print(f'training time: {time_elapsed:.2f}s')
+
+################################################################################
 # sampling
-def sampling_synthetic_data(model):
-    pass
+def sampling_synthetic_data(model, dataname, device, steps, save_path, ckpt_dir):
+    train_z, categories, d_numerical = get_input_generate(ckpt_dir)
+    in_dim = train_z.shape[1] 
+    mean = train_z.mean(0)
+    denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
+    
+    model = Model(denoise_fn=denoise_fn, hid_dim=train_z.shape[1]).to(device)
+    model.load_state_dict(torch.load(f'{ckpt_dir}/diffusion.pt'))
+
+    start_time = time.time()
+    num_samples = train_z.shape[0]
+    sample_dim = in_dim
+
+    x_next = sample(model.denoise_fn_D, num_samples, sample_dim)
+    x_next = x_next * 2 + mean.to(device)
+
+    syn_data = x_next.float().cpu().numpy()
+    syn_num, syn_cat, syn_target = split_num_cat_target(syn_data, categories, d_numerical, device) 
+
+    syn_df = recover_data(syn_num, syn_cat, syn_target, dataname)
+
+    syn_df.to_csv(save_path, index=False)
+    end_time = time.time()
+    
+    print(f'sampling time: {end_time - start_time:.2f}s')
+    print(f'saving sampled data to {save_path}')
     
 def main():
     # global variables
-    LR = 1e-3
     WD = 0
     D_TOKEN = 4
-    TOKEN_BIAS = True
 
     N_HEAD = 1
     FACTOR = 32
     NUM_LAYERS = 2
     
-    # configs
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    batch_size = 2
+    # TODO: configs
+    device = torch.device('cuda:1')
+    batch_size = 256
+    n_epochs = 1
+    lr = 1e-3
     
     # data
     X_num_sets, X_cat_sets, categories, d_numerical = preprocess('/rdf/db/public-tabular-datasets/adult/')
     X_train_num, X_eval_num, X_test_num = X_num_sets
     X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
+    X_train_num, X_eval_num, X_test_num = torch.tensor(X_train_num).float(), torch.tensor(X_eval_num).float(), torch.tensor(X_test_num).float()
+    X_train_cat, X_eval_cat, X_test_cat = torch.tensor(X_train_cat).long(), torch.tensor(X_eval_cat).long(), torch.tensor(X_test_cat).long()
     
     train_data = TabularDataset(X_train_num, X_train_cat)
     train_loader = DataLoader(
@@ -451,18 +993,84 @@ def main():
 
     pre_encoder = EncoderModel(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head=N_HEAD, factor=FACTOR).to(device)
     pre_decoder = DecoderModel(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head=N_HEAD, factor=FACTOR).to(device)
-
     pre_encoder.eval()
     pre_decoder.eval()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WD)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=WD)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=10, verbose=True)
     
-    # # training
-    # train_model(model)
+    # training latent model
+    ckpt_dir = './ckpt/adult'
+    model_save_path = f'{ckpt_dir}/model.pt'
+    encoder_save_path = f'{ckpt_dir}/encoder.pt'
+    decoder_save_path = f'{ckpt_dir}/decoder.pt'
+    train_latent_model(
+        model, pre_encoder, pre_decoder, optimizer, scheduler, n_epochs,
+        train_loader, X_train_num, X_train_cat, X_eval_num, X_eval_cat,
+        model_save_path, encoder_save_path, decoder_save_path, ckpt_dir,
+        min_beta=0.1, max_beta=1.0, lambd=0.95,
+        device=device,
+    )
+
+    # TODO: configs
+    batch_size = 256
+    n_epochs = 1
+    lr = 1e-3
     
+    # training diffusion model
+    train_z = get_input_train(ckpt_dir)
+    in_dim = train_z.shape[1] 
+    mean = train_z.mean(0)
+    train_z = (train_z - mean) / 2
+    train_data = train_z
+    train_loader = DataLoader(
+        train_data,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+    )
+    
+    denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
+
+    num_params = sum(p.numel() for p in denoise_fn.parameters())
+    print('the number of parameters:', num_params)
+    
+    model = Model(denoise_fn=denoise_fn, hid_dim=train_z.shape[1]).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=0)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=20, verbose=True)
+    
+    train_diffusion_model(
+        model, optimizer, scheduler, n_epochs, train_loader, ckpt_dir, device,
+    )
+
     # # sampling
     # sampling_synthetic_data(model)
+    
+    in_dim = train_z.shape[1] 
+    mean = train_z.mean(0)
+    denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
+    
+    model = Model(denoise_fn=denoise_fn, hid_dim=train_z.shape[1]).to(device)
+    model.load_state_dict(torch.load(f'{ckpt_dir}/diffusion.pt'))
+
+    start_time = time.time()
+    num_samples = train_z.shape[0]
+    sample_dim = in_dim
+
+    x_next = sample(model.denoise_fn_D, num_samples, sample_dim, device=device)
+    x_next = x_next * 2 + mean.to(device)
+
+    syn_data = x_next.float().cpu().numpy()
+    # syn_num, syn_cat, syn_target = split_num_cat_target(syn_data, categories, d_numerical, device) 
+
+    # syn_df = recover_data(syn_num, syn_cat, syn_target, dataname)
+
+    # syn_df.to_csv(save_path, index=False)
+    # end_time = time.time()
+    
+    # print(f'sampling time: {end_time - start_time:.2f}s')
+    # print(f'saving sampled data to {save_path}')
 
 if __name__ == '__main__':
     main()
