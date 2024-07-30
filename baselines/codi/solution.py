@@ -8,29 +8,12 @@ import numpy as np
 import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 warnings.filterwarnings('ignore')
 
 ################################################################################
 # data
-def categorical_to_onehot(cat_matrix, categories):
-    cat_matrix = cat_matrix.astype(int)
-    
-    # create a list to store the one-hot encoded values
-    onehot = []
-    
-    # iterate over the columns of the categorical matrix
-    for i in range((cat_matrix.shape[1])):
-        # create a one-hot encoded matrix for the i-th column
-        onehot_i = np.eye(categories[i])[cat_matrix[:, i]]
-        
-        # append the one-hot encoded matrix to the list
-        onehot.append(onehot_i)
-    
-    # concatenate the one-hot encoded matrices along the columns
-    return np.concatenate(onehot, axis=1)
-
 def preprocess(data_dir):
     xn_train = pd.read_csv(os.path.join(data_dir, 'xn_train.csv'), index_col=0)
     xn_eval = pd.read_csv(os.path.join(data_dir, 'xn_eval.csv'), index_col=0)
@@ -331,7 +314,7 @@ class GaussianDiffusionTrainer(nn.Module):
         )
 
 class GaussianDiffusionSampler(nn.Module):
-    def __init__(self, model, beta_1, beta_t, t, mean_type='eps', var_type='fixedlarge'):
+    def __init__(self, model, beta_1, beta_t, t, mean_type='epsilon', var_type='fixedlarge'):
         assert mean_type in ['xprev' 'xstart', 'epsilon']
         assert var_type in ['fixedlarge', 'fixedsmall']
         super().__init__()
@@ -660,6 +643,33 @@ def training_with(x_0_con, x_0_dis, trainer_con, trainer_dis, ns_con, ns_dis, ca
     triplet_dis = sum(triplet_dis)/len(triplet_dis)
     return con_loss, triplet_con, dis_loss, triplet_dis
 
+def categorical_to_onehot(cat_matrix, categories):
+    cat_matrix = cat_matrix.astype(int)
+    # create a list to store the one-hot encoded values
+    onehot = []
+    # iterate over the columns of the categorical matrix
+    for i in range((cat_matrix.shape[1])):
+        # create a one-hot encoded matrix for the i-th column
+        onehot_i = np.eye(categories[i])[cat_matrix[:, i]]
+        # append the one-hot encoded matrix to the list
+        onehot.append(onehot_i)
+    # concatenate the one-hot encoded matrices along the columns
+    return np.concatenate(onehot, axis=1)
+
+def onehot_to_categorical(onehot_matrix, categories):
+    # create a list to store the categorical values
+    categorical = []
+    # iterate over the columns of the one-hot matrix
+    st = 0
+    for i in range(len(categories)):
+        ed = st + categories[i]
+        # create a categorical matrix for the i-th column
+        categorical_i = np.argmax(onehot_matrix[:, st:ed], axis=1)
+        # append the categorical matrix to the list
+        categorical.append(categorical_i)
+        st = ed
+    return np.stack(categorical, axis=1)
+
 ################################################################################
 # training
 def train_codi_model(
@@ -717,139 +727,69 @@ def train_codi_model(
 
 ################################################################################
 # sampling
+def log_sample_categorical(logits, num_classes):
+    full_sample = []
+    k = 0
+    for i in range(len(num_classes)):
+        logits_column = logits[:, k:num_classes[i] + k]
+        k += num_classes[i]
+        uniform = torch.rand_like(logits_column)
+        gumbel_noise = -torch.log(-torch.log(uniform + 1e-30) + 1e-30)
+        sample = (gumbel_noise + logits_column).argmax(dim=1)
+        col_t = np.zeros(logits_column.shape)
+        col_t[np.arange(logits_column.shape[0]), sample.detach().cpu()] = 1
+        full_sample.append(col_t)
+    full_sample = torch.tensor(np.concatenate(full_sample, axis=1))
+    log_sample = torch.log(full_sample.float().clamp(min=1e-30))
+    return log_sample
+
+def sampling_with(x_t_con_end, log_x_t_dis_end, net_sampler, trainer_dis, trans, n_timesteps):
+    x_t_con = x_t_con_end
+    x_t_dis = log_x_t_dis_end
+
+    for time_step in reversed(range(n_timesteps)):
+        t = x_t_con.new_ones((x_t_con.shape[0],), dtype=torch.long) * time_step
+        mean, log_var = net_sampler.p_mean_variance(x_t=x_t_con, t=t, cond=x_t_dis.to(x_t_con.device), trans=trans)
+        if time_step > 0:
+            noise = torch.randn_like(x_t_con)
+        elif time_step == 0:
+            noise = 0
+        x_t_minus_1_con = mean + torch.exp(0.5 * log_var) * noise
+        x_t_minus_1_con = torch.clip(x_t_minus_1_con, -1., 1.)
+        x_t_minus_1_dis = trainer_dis.p_sample(x_t_dis, t, x_t_con)
+        x_t_con = x_t_minus_1_con
+        x_t_dis = x_t_minus_1_dis
+
+    return x_t_con, x_t_dis
+
+def sampling_synthetic_data(
+    model_con, model_dis, trainer_dis, ckpt_dir, 
+    train_con_data, train_dis_data,
+    num_class, net_sampler, n_timesteps,
+    device,
+):
+    model_con.load_state_dict(torch.load(f'{ckpt_dir}/model_con.pt'))
+    model_dis.load_state_dict(torch.load(f'{ckpt_dir}/model_dis.pt'))
+
+    model_con.eval()
+    model_dis.eval()
+    
+    with torch.no_grad():
+        x_T_con = torch.randn(train_con_data.shape[0], train_con_data.shape[1]).to(device)
+        log_x_T_dis = log_sample_categorical(torch.zeros(train_dis_data.shape, device=device), num_class).to(device)
+        x_con, x_dis = sampling_with(x_T_con, log_x_T_dis, net_sampler, trainer_dis, num_class, n_timesteps)
+    
+    sample_con = x_con.detach().cpu().numpy()
+    sample_dis = x_dis.detach().cpu().numpy()
+    sample_dis = onehot_to_categorical(sample_dis, num_class)
+    sample = np.concatenate([sample_con, sample_dis], axis=1)
+    return sample
 
 ################################################################################
 # main
-def run():
-    # device = torch.device("cuda:{}".format(args.gpu) if torch.cuda.is_available() else "cpu")
-    # dataname = args.dataname
-
-    # dataset_dir = f'data/{dataname}'
-    # with open(f'{dataset_dir}/info.json', 'r') as f:
-    #     info = json.load(f)
-    # task_type = info['task_type']
-
-    # curr_dir = os.path.dirname(os.path.abspath(__file__))
-    # ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
-
-    # if not os.path.exists(ckpt_dir):
-    #     os.makedirs(ckpt_dir)
-
-    train, train_con_data, train_dis_data, test, (transformer_con, transformer_dis, meta), con_idx, dis_idx = tabular_dataload.get_dataset(args) 
-    _, _, categories, d_numerical = preprocess(dataset_dir, task_type = task_type)
-    num_class = np.array(categories)
-
-    train_con_data = torch.tensor(train_con_data.astype(np.float32)).float()
-    train_dis_data = torch.tensor(train_dis_data.astype(np.int32)).long()
-
-    train_iter_con = DataLoader(train_con_data, batch_size=args.training_batch_size)
-    train_iter_dis = DataLoader(train_dis_data, batch_size=args.training_batch_size)
-    datalooper_train_con = infiniteloop(train_iter_con)
-    datalooper_train_dis = infiniteloop(train_iter_dis)
-
-    num_class = np.array(categories)
-
-    # Condtinuous Diffusion Model Setup
-    args.input_size = train_con_data.shape[1] 
-    args.cond_size = train_dis_data.shape[1]
-    args.output_size = train_con_data.shape[1]
-    args.encoder_dim =  list(map(int, args.encoder_dim_con.split(',')))
-    args.nf =  args.nf_con
-    model_con = tabularUnet(args)
-    optim_con = torch.optim.Adam(model_con.parameters(), lr=args.lr_con)
-    sched_con = torch.optim.lr_scheduler.LambdaLR(optim_con, lr_lambda=warmup_lr_fn)
-    trainer = GaussianDiffusionTrainer(model_con, args.beta_1, args.beta_T, args.T).to(device)
-    net_sampler = GaussianDiffusionSampler(model_con, args.beta_1, args.beta_T, args.T, args.mean_type, args.var_type).to(device)
-
-    args.input_size = train_dis_data.shape[1] 
-    args.cond_size = train_con_data.shape[1]
-    args.output_size = train_dis_data.shape[1]
-    args.encoder_dim =  list(map(int, args.encoder_dim_dis.split(',')))
-    args.nf =  args.nf_dis
-    model_dis = tabularUnet(args)
-    optim_dis = torch.optim.Adam(model_dis.parameters(), lr=args.lr_dis)
-    sched_dis = torch.optim.lr_scheduler.LambdaLR(optim_dis, lr_lambda=warmup_lr_fn)
-    trainer_dis = MultinomialDiffusion(num_class, train_dis_data.shape, model_dis, args, timesteps=args.T,loss_type='vb_stochastic').to(device)
-
-    print('Continuous model:')
-    print(model_con)
-
-    print('Discrete model:')
-    print(model_dis)
-    
-    num_params_con = sum(p.numel() for p in model_con.parameters())
-    num_params_dis = sum(p.numel() for p in model_dis.parameters())
-    print('Continuous model params: %d' % (num_params_con))
-    print('Discrete model params: %d' % (num_params_dis))
-
-    scores_max_eval = -10
-
-    total_steps_both = args.total_epochs_both * int(train.shape[0]/args.training_batch_size+1)
-    sample_step = args.sample_step * int(train.shape[0]/args.training_batch_size+1)
-    print("Total steps: %d" %total_steps_both)
-    print("Sample steps: %d" %sample_step)
-    print("Continuous: %d, %d" %(train_con_data.shape[0], train_con_data.shape[1]))
-    print("Discrete: %d, %d"%(train_dis_data.shape[0], train_dis_data.shape[1]))
-
-    epoch = 0
-    train_iter_con = DataLoader(train_con_data, batch_size=args.training_batch_size)
-    train_iter_dis = DataLoader(train_dis_data, batch_size=args.training_batch_size)
-    datalooper_train_con = infiniteloop(train_iter_con)
-    datalooper_train_dis = infiniteloop(train_iter_dis)
-
-    best_loss = float('inf')
-    for step in range(total_steps_both):
-
-        start_time = time.time()
-        model_con.train()
-        model_dis.train()
-
-        x_0_con = next(datalooper_train_con).to(device).float()
-        x_0_dis = next(datalooper_train_dis).to(device)
-
-        ns_con, ns_dis = make_negative_condition(x_0_con, x_0_dis)
-        con_loss, con_loss_ns, dis_loss, dis_loss_ns = training_with(x_0_con, x_0_dis, trainer, trainer_dis, ns_con, ns_dis, categories, args)
-
-        loss_con = con_loss + args.lambda_con * con_loss_ns
-        loss_dis = dis_loss + args.lambda_dis * dis_loss_ns
-
-        optim_con.zero_grad()
-        loss_con.backward()
-        torch.nn.utils.clip_grad_norm_(model_con.parameters(), args.grad_clip)
-        optim_con.step()
-        sched_con.step()
-
-        optim_dis.zero_grad()
-        loss_dis.backward()
-        torch.nn.utils.clip_grad_value_(trainer_dis.parameters(), args.grad_clip)#, self.args.clip_value)
-        torch.nn.utils.clip_grad_norm_(trainer_dis.parameters(), args.grad_clip)#, self.args.clip_norm)
-        optim_dis.step()
-        sched_dis.step()
-        
-        total_loss = loss_con.item() + loss_dis.item()
-        if total_loss < best_loss:
-            best_loss = total_loss
-            torch.save(model_con.state_dict(), f'{ckpt_dir}/model_con.pt')
-            torch.save(model_dis.state_dict(), f'{ckpt_dir}/model_dis.pt')
-            
-        if (step+1) % int(train.shape[0]/args.training_batch_size+1) == 0:
-
-            print(f"Epoch:{epoch}, step = {step}, diffusion continuous loss: {con_loss:.3f}, discrete loss: {dis_loss:.3f}")
-            print(f"Epoch:{epoch}, step = {step}, CL continuous loss: {con_loss_ns:.3f}, discrete loss: {dis_loss_ns:.3f}")
-            print(f"Epoch:{epoch}, step = {step}, Total continuous loss: {loss_con:.3f}, discrete loss: {loss_dis:.3f}")
-            epoch +=1
-        
-            if epoch % 1000 == 0:
-                torch.save(model_con.state_dict(), f'{ckpt_dir}/model_con_{epoch}.pt')
-                torch.save(model_dis.state_dict(), f'{ckpt_dir}/model_dis_{epoch}.pt')
-        
-        end_time = time.time()
-        print(f"Time taken: {end_time-start_time:.3f}")
-
 def main():
     # global variables
     device = torch.device('cuda:1')
-    # device = torch.device('cpu')
     
     # TODO: configs
     dataname = 'adult'
@@ -882,7 +822,10 @@ def main():
     lr_dis = 1e-4
     # training
     lambda_con, lambda_dis, grad_clip = 1.0, 1.0, 1.0
-    total_epochs_both = 2
+    total_epochs_both = 1
+    # sampling
+    mean_type = 'epsilon'
+    var_type = 'fixedlarge'
     
     # model
     input_size = X_train_num.shape[1] 
@@ -907,8 +850,10 @@ def main():
     
     num_params_con = sum(p.numel() for p in model_con.parameters())
     num_params_dis = sum(p.numel() for p in model_dis.parameters())
-    print('continuous model params: %d' % (num_params_con))
-    print('discrete model params: %d' % (num_params_dis))
+    print_it = False
+    if print_it:
+        print('continuous model params: %d' % (num_params_con))
+        print('discrete model params: %d' % (num_params_dis))
     
     # training
     start_time = time.time()
@@ -921,10 +866,23 @@ def main():
         device, ckpt_dir,
     )
     end_time = time.time()
-    print(f'training time: {end_time-start_time:.3f}')
+    print(f'training time: {end_time-start_time:.3f}s')
     
     # sampling
-    pass
+    net_sampler = GaussianDiffusionSampler(
+        model_con, beta_1, beta_t, n_timesteps, mean_type, var_type,
+    ).to(device)
+    
+    start_time = time.time()
+    sample = sampling_synthetic_data(
+        model_con, model_dis, trainer_dis, ckpt_dir, 
+        X_train_num, X_train_cat,
+        num_class, net_sampler, n_timesteps,
+        device,
+    )
+    end_time = time.time()
+    print(f'sampling time: {end_time-start_time:.3f}s')
+    print(sample.shape)
 
 if __name__ == '__main__':
     main()
