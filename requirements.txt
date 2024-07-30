@@ -19,6 +19,7 @@ optuna
 statsmodels
 bioread
 imblearn
+peft
 
 # natural language processing
 nltk
