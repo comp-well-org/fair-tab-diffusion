@@ -285,10 +285,6 @@ class GReaT:
                 text_data = _convert_tokens_to_text(tokens, self.tokenizer)
                 df_gen = _convert_text_to_tabular_data(text_data, df_gen)
 
-                # print(len(text_data[0]))
-                # print(text_data[0])
-                # print(df_gen.iloc[0])
-
                 # remove rows with flawed numerical values
                 for i_num_cols in self.num_cols:
                     df_gen = df_gen[pd.to_numeric(df_gen[i_num_cols], errors='coerce').notnull()]
@@ -443,9 +439,9 @@ def main():
     # sampling
     great.load_finetuned_model(f'{ckpt_dir}/model.pt')
     
-    df = _array_to_dataframe(train_df, columns=None)
-    great._update_column_information(df)
-    great._update_conditional_information(df, conditional_col=None)    
+    data_df = _array_to_dataframe(train_df, columns=None)
+    great._update_column_information(data_df)
+    great._update_conditional_information(data_df, conditional_col=None)    
     samples = great.sample(n_samples, k=100, device=device)
     print(samples.head(3))
 
