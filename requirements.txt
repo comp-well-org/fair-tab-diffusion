@@ -20,6 +20,7 @@ statsmodels
 bioread
 imblearn
 peft
+datasets
 
 # natural language processing
 nltk

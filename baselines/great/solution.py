@@ -8,11 +8,13 @@ import typing as tp
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from datasets import Dataset
 from dataclasses import dataclass
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 from transformers import DataCollatorWithPadding, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
 
+os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 warnings.filterwarnings('ignore')
 
 ################################################################################
@@ -294,13 +296,10 @@ class GReaT:
                 df_gen[self.num_cols] = df_gen[self.num_cols].astype(float)
 
                 # remove rows with missing values
-                df_gen = df_gen.drop(
-                    df_gen[df_gen.isna().any(axis=1)].index)
+                df_gen = df_gen.drop(df_gen[df_gen.isna().any(axis=1)].index)
                 # update process bar
-
                 pbar.update(df_gen.shape[0] - already_generated)
                 already_generated = df_gen.shape[0]
-                print('already generated = ', already_generated)
         df_gen = df_gen.reset_index(drop=True)
         return df_gen.head(n_samples)
 
@@ -408,29 +407,47 @@ class GReaT:
             return RandomStart(self.tokenizer, self.columns)
 
 ################################################################################
-# training
-def train_great_model():
-    pass
-
-################################################################################
-# sampling
-
-################################################################################
 # main
 def main():
     # global variables
-    device = torch.device('cuda:1')
+    device = 'cuda:1'
     
     # TODO: configs
+    dataname = 'adult'
+    n_epochs = 1
+    batch_size = 8
+    n_samples = 2000
     
     # data
+    train_df = pd.read_csv(f'/rdf/db/public-tabular-datasets/{dataname}/d_train.csv', index_col=0)
     
     # model
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+
+    great = GReaT(
+        'distilgpt2',                         
+        epochs=n_epochs,          
+        experiment_dir=ckpt_dir,
+        batch_size=batch_size,
+        save_strategy='no',
+        logging_strategy='no',
+    )
     
     # training
+    great.fit(train_df)
+    great.save(ckpt_dir)
     
     # sampling
-    pass
+    great.load_finetuned_model(f'{ckpt_dir}/model.pt')
+    
+    df = _array_to_dataframe(train_df, columns=None)
+    great._update_column_information(df)
+    great._update_conditional_information(df, conditional_col=None)    
+    samples = great.sample(n_samples, k=100, device=device)
+    print(samples.head(3))
 
 if __name__ == '__main__':
     main()
