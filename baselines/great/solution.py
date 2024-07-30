@@ -11,7 +11,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 warnings.filterwarnings('ignore')
-warnings.filterwarnings('ignore')
 
 ################################################################################
 # data
@@ -32,6 +31,7 @@ warnings.filterwarnings('ignore')
 # main
 def main():
     # global variables
+    device = torch.device('cuda:1')
     
     # TODO: configs
     

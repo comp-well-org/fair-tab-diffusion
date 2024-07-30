@@ -12,8 +12,6 @@ from torch.utils.data import DataLoader
 
 warnings.filterwarnings('ignore')
 
-warnings.filterwarnings('ignore')
-
 ################################################################################
 # data
 
