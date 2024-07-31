@@ -1,13 +1,16 @@
 import os
+import abc
 import time
 import math
 import json
 import torch
+import logging
 import warnings
 import numpy as np
 import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 import ml_collections as mlc
 from torch.utils.data import DataLoader
 
@@ -287,7 +290,7 @@ class NCSNpp(nn.Module):
         dim = config.data.image_size
         for item in list(config.model.hidden_dims):
             modules += [
-                base_layer[config.model.layer_type](dim, item)
+                base_layer[config.model.layer_type](dim, item),
             ]
             dim += item
             modules.append(NONLINEARITIES[config.model.activation])
@@ -369,6 +372,87 @@ def onehot_to_categorical(onehot_matrix, categories):
         st = ed
     return np.stack(categorical, axis=1)
 
+class ExponentialMovingAverage:
+    def __init__(self, parameters, decay, use_num_updates=True):
+        if decay < 0.0 or decay > 1.0:
+            raise ValueError('decay must be between 0 and 1')
+        self.decay = decay
+        self.num_updates = 0 if use_num_updates else None
+        self.shadow_params = [p.clone().detach() for p in parameters if p.requires_grad]
+        self.collected_params = []
+
+    def update(self, parameters):
+        decay = self.decay
+        if self.num_updates is not None:
+            self.num_updates += 1
+            decay = min(decay, (1 + self.num_updates) / (10 + self.num_updates))
+        one_minus_decay = 1.0 - decay
+        with torch.no_grad():
+            parameters = [p for p in parameters if p.requires_grad]
+            for s_param, param in zip(self.shadow_params, parameters):
+                s_param.sub_(one_minus_decay * (s_param - param))
+
+    def copy_to(self, parameters):
+        parameters = [p for p in parameters if p.requires_grad]
+        for s_param, param in zip(self.shadow_params, parameters):
+            if param.requires_grad:
+                param.data.copy_(s_param.data)
+
+    def store(self, parameters):
+        self.collected_params = [param.clone() for param in parameters]
+
+    def restore(self, parameters):
+        for c_param, param in zip(self.collected_params, parameters):
+            param.data.copy_(c_param.data)
+
+    def state_dict(self):
+        return dict(decay=self.decay, num_updates=self.num_updates, shadow_params=self.shadow_params)
+
+    def load_state_dict(self, state_dict):
+        self.decay = state_dict['decay']
+        self.num_updates = state_dict['num_updates']
+        self.shadow_params = state_dict['shadow_params']
+
+def get_model_fn(model, train=False):
+    def model_fn(x, labels):
+        if not train:
+            model.eval()
+            return model(x, labels)
+        else:
+            model.train()
+            return model(x, labels)
+    return model_fn
+
+def get_score_fn(sde, model, train=False, continuous=False):
+    model_fn = get_model_fn(model, train=train)
+
+    if isinstance(sde, VPSDE) or isinstance(sde, SubVPSDE):
+        def score_fn(x, t):
+            if continuous or isinstance(sde, SubVPSDE):
+                labels = t * (sde.N - 1)
+                score = model_fn(x, labels)
+                std = sde.marginal_prob(torch.zeros_like(x), t)[1]
+            else:
+                labels = t * (sde.N - 1)
+                score = model_fn(x, labels) 
+                std = sde.sqrt_1m_alphas_cumprod.to(labels.device)[labels.long()]
+                score = -score / std[:, None]
+            return score
+    elif isinstance(sde, VESDE):
+        def score_fn(x, t):
+            if continuous:
+                labels = sde.marginal_prob(torch.zeros_like(x), t)[1] 
+            else:
+                labels = sde.T - t
+                labels *= sde.N - 1
+                labels = torch.round(labels).long()
+
+            score = model_fn(x, labels)
+            return score
+    else:
+        raise NotImplementedError(f'SDE class {sde.__class__.__name__} not yet supported')
+    return score_fn
+
 ################################################################################
 # configs
 def get_default_configs():
@@ -394,7 +478,7 @@ def get_default_configs():
     training.spl = True
     training.lambda_ = 0.5
 
-    #fine_tune
+    # finetune
     training.eps_iters = 50
     training.fine_tune_epochs = 50
     training.retrain_type = 'median'
@@ -493,7 +577,345 @@ def get_config(name):
     return config
 
 ################################################################################
-# training
+# loss
+def get_optimizer(config, params):
+    if config.optim.optimizer == 'Adam':
+        optimizer = optim.Adam(
+            params, lr=config.optim.lr, betas=(config.optim.beta1, 0.999), eps=config.optim.eps,
+            weight_decay=config.optim.weight_decay,
+        )
+    else:
+        raise NotImplementedError(f'optimizer {config.optim.optimizer} not supported yet!')
+    return optimizer
+
+def optimization_manager(config):
+    def optimize_fn(
+        optimizer, params, step, lr=config.optim.lr,
+        warmup=config.optim.warmup,
+        grad_clip=config.optim.grad_clip,
+    ):
+        if warmup > 0:
+            for g in optimizer.param_groups:
+                g['lr'] = lr * np.minimum((step+1) / warmup, 1.0)
+        if grad_clip >= 0:
+            torch.nn.utils.clip_grad_norm_(params, max_norm=grad_clip)
+        optimizer.step()
+    return optimize_fn
+
+def get_sde_loss_fn(sde, train, reduce_mean=True, continuous=True, likelihood_weighting=True, eps=1e-5):
+    reduce_op = torch.mean if reduce_mean else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
+    
+    def loss_fn(model, batch):
+        score_fn = get_score_fn(sde, model, train=train, continuous=continuous)
+        t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - eps) + eps
+        z = torch.randn_like(batch)
+        mean, std = sde.marginal_prob(batch, t)
+        perturbed_data = mean + std[:, None] * z
+        score = score_fn(perturbed_data, t)
+        if not likelihood_weighting:
+            losses = torch.square(score * std[:, None] + z) 
+            losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
+        else:
+            g2 = sde.sde(torch.zeros_like(batch), t)[1] ** 2
+            losses = torch.square(score + z / std[:, None])
+            losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
+        return losses
+
+    return loss_fn
+
+def get_smld_loss_fn(vesde, train, reduce_mean=False):
+    assert isinstance(vesde, VESDE), 'SMLD training only works for VESDEs'
+
+    smld_sigma_array = torch.flip(vesde.discrete_sigmas, dims=(0,))
+    reduce_op = torch.mean if reduce_mean else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
+
+    def loss_fn(model, batch):
+        model_fn = get_model_fn(model, train=train)
+
+        labels = torch.randint(0, vesde.N, (batch.shape[0],), device=batch.device)
+        sigmas = smld_sigma_array.to(batch.device)[labels]
+        noise = torch.randn_like(batch) * sigmas[:, None]
+        perturbed_data = noise + batch
+        score = model_fn(perturbed_data, labels)
+        target = -noise / (sigmas ** 2)[:, None]
+        losses = torch.square(score - target)
+        losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * sigmas ** 2
+        loss = torch.mean(losses)
+        return loss
+
+    return loss_fn
+
+def get_ddpm_loss_fn(vpsde, train, reduce_mean=True):
+    assert isinstance(vpsde, VPSDE), 'DDPM training only works for VPSDEs'
+    reduce_op = torch.mean if reduce_mean else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
+
+    def loss_fn(model, batch):
+        model_fn = get_model_fn(model, train=train)
+        labels = torch.randint(0, vpsde.N, (batch.shape[0],), device=batch.device)
+        sqrt_alphas_cumprod = vpsde.sqrt_alphas_cumprod.to(batch.device)
+        sqrt_1m_alphas_cumprod = vpsde.sqrt_1m_alphas_cumprod.to(batch.device)
+        noise = torch.randn_like(batch)
+        perturbed_data = sqrt_alphas_cumprod[labels, None] * batch + sqrt_1m_alphas_cumprod[labels, None] * noise
+        score = model_fn(perturbed_data, labels)
+        losses = torch.square(score - noise)
+        losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
+        loss = torch.mean(losses)
+        return loss
+
+    return loss_fn
+
+def min_max_scaling(factor, scale=(0, 1)):
+    std = (factor - factor.min()) / (factor.max() - factor.min())
+    new_min = torch.tensor(scale[0]) 
+    new_max = torch.tensor(scale[1])
+    return std * (new_max - new_min) + new_min
+
+def compute_v(ll, alpha, beta):
+    v = -torch.ones(ll.shape).to(ll.device)
+    v[torch.gt(ll, beta)] = torch.tensor(0., device=v.device) 
+    v[torch.le(ll, alpha)] = torch.tensor(1., device=v.device)
+    if ll[torch.eq(v, -1)].shape[0] != 0 and ll[torch.eq(v, -1)].shape[0] != 1:
+        v[torch.eq(v, -1)] = min_max_scaling(ll[torch.eq(v, -1)], scale=(1, 0)).to(v.device)
+    else:
+        v[torch.eq(v, -1)] = torch.tensor(0.5, device=v.device)
+    return v  
+
+def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True, likelihood_weighting=False, workdir=False, spl=True, writer=None, alpha0=None, beta0=None):
+    if continuous:
+        loss_fn = get_sde_loss_fn(sde, train, reduce_mean=reduce_mean, continuous=True, likelihood_weighting=likelihood_weighting)
+    else:
+        assert not likelihood_weighting, 'likelihood weighting is not supported for original SMLD/DDPM training'
+        if isinstance(sde, VESDE):
+            loss_fn = get_smld_loss_fn(sde, train, reduce_mean=reduce_mean)
+        elif isinstance(sde, VPSDE):
+            loss_fn = get_ddpm_loss_fn(sde, train, reduce_mean=reduce_mean)
+        else:
+            raise ValueError(f'Discrete training for {sde.__class__.__name__} is not recommended.')
+
+    def step_fn(state, batch):
+        model = state['model']
+        if train:
+            optimizer = state['optimizer']
+            optimizer.zero_grad()
+            losses = loss_fn(model, batch)
+            if spl:
+                nll = losses
+                q_alpha = torch.tensor(alpha0 + torch.log(torch.tensor(1 + 0.0001718*state['step'] * (1 - alpha0), dtype=torch.float32))).clamp_(max=1).to(nll.device)
+                q_beta = torch.tensor(beta0 + torch.log(torch.tensor(1 + 0.0001718 * state['step'] * (1 - beta0), dtype=torch.float32))).clamp_(max=1).to(nll.device)
+                logging.info(f'q_alpha: {q_alpha}, q_beta: {q_beta}')
+
+                alpha = torch.quantile(nll, q_alpha) 
+                beta = torch.quantile(nll, q_beta)
+                assert alpha <= beta
+                v = compute_v(nll, alpha, beta)
+                loss = torch.mean(v*losses)
+                
+                logging.info(f'alpha: {alpha}, beta: {beta}')
+                logging.info(f'1 samples: {torch.sum(v == 1)} / {len(v)}')
+                logging.info(f'weighted samples: { torch.sum((v != 1) * (v != 0)  )} / {len(v)}')
+                logging.info(f'0 samples: {torch.sum(v == 0)} / {len(v)}')
+            else:
+                loss = torch.mean(losses)
+
+            loss.backward()
+            optimize_fn(optimizer, model.parameters(), step=state['step'])
+            state['step'] += 1
+            state['ema'].update(model.parameters())
+        else:
+            with torch.no_grad():
+                ema = state['ema']
+                ema.store(model.parameters())
+                ema.copy_to(model.parameters())
+                losses, score = loss_fn(model, batch)
+                ema.restore(model.parameters())
+                loss = torch.mean(losses)
+        return loss
+    return step_fn
+
+################################################################################
+# sdes
+class SDE(abc.ABC):
+    def __init__(self, N):
+        super().__init__()
+        self.N = N
+
+    @property
+    @abc.abstractmethod
+    def T(self):
+        pass
+
+    @abc.abstractmethod
+    def sde(self, x, t):
+        pass
+
+    @abc.abstractmethod
+    def marginal_prob(self, x, t):
+        pass
+
+    @abc.abstractmethod
+    def prior_sampling(self, shape):
+        pass
+
+    @abc.abstractmethod
+    def prior_logp(self, z):
+        pass
+
+    def discretize(self, x, t):
+        dt = 1 / self.N
+        drift, diffusion = self.sde(x, t)
+        f = drift * dt
+        G = diffusion * torch.sqrt(torch.tensor(dt, device=t.device))
+        return f, G
+
+    def reverse(self, score_fn, probability_flow=False):
+        N = self.N
+        T = self.T
+        sde_fn = self.sde
+        discretize_fn = self.discretize
+
+        class RSDE(self.__class__):
+            def __init__(self):
+                self.N = N
+                self.probability_flow = probability_flow
+
+            @property
+            def T(self):
+                return T
+
+            def sde(self, x, t):
+                drift, diffusion = sde_fn(x, t)
+                score = score_fn(x, t)
+                drift = drift - diffusion[:, None] ** 2 * score * (0.5 if self.probability_flow else 1.)
+                diffusion = 0. if self.probability_flow else diffusion
+                return drift, diffusion
+
+            def discretize(self, x, t):
+                f, G = discretize_fn(x, t)
+                rev_f = f - G[:, None] ** 2 * score_fn(x, t) * (0.5 if self.probability_flow else 1.)
+                rev_G = torch.zeros_like(G) if self.probability_flow else G
+                return rev_f, rev_G
+            
+        return RSDE()
+
+class VPSDE(SDE):
+    def __init__(self, beta_min=0.1, beta_max=20, N=1000):
+        super().__init__(N)
+        self.beta_0 = beta_min
+        self.beta_1 = beta_max
+        self.N = N
+        self.discrete_betas = torch.linspace(beta_min / N, beta_max / N, N)
+        self.alphas = 1. - self.discrete_betas
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_1m_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
+
+    @property
+    def T(self):
+        return 1
+
+    def sde(self, x, t):
+        beta_t = self.beta_0 + t * (self.beta_1 - self.beta_0)
+        drift = -0.5 * beta_t[:, None] * x
+
+        diffusion = torch.sqrt(beta_t)
+        return drift, diffusion
+
+    def marginal_prob(self, x, t):
+        log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
+        mean = torch.exp(log_mean_coeff[:, None]) * x
+        std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
+        return mean, std
+
+    def prior_sampling(self, shape):
+        return torch.randn(*shape)
+
+    def prior_logp(self, z):
+        logZ = -0.5 * np.log(2 * np.pi)
+        return logZ - z ** 2 / 2
+
+    def discretize(self, x, t):
+        timestep = (t * (self.N - 1) / self.T).long()
+        beta = self.discrete_betas.to(x.device)[timestep]
+        alpha = self.alphas.to(x.device)[timestep]
+        sqrt_beta = torch.sqrt(beta)
+        f = torch.sqrt(alpha)[:, None] * x - x
+
+        G = sqrt_beta
+        return f, G
+
+class SubVPSDE(SDE):
+    def __init__(self, beta_min=0.1, beta_max=20, N=1000):
+        super().__init__(N)
+        self.beta_0 = beta_min
+        self.beta_1 = beta_max
+        self.N = N
+
+    @property
+    def T(self):
+        return 1
+
+    def sde(self, x, t):
+        beta_t = self.beta_0 + t * (self.beta_1 - self.beta_0)
+        drift = -0.5 * beta_t[:, None] * x
+
+        discount = 1. - torch.exp(-2 * self.beta_0 * t - (self.beta_1 - self.beta_0) * t ** 2)
+        diffusion = torch.sqrt(beta_t * discount)
+        return drift, diffusion
+
+    def marginal_prob(self, x, t):
+        log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
+        mean = torch.exp(log_mean_coeff)[:, None] * x
+
+        std = 1 - torch.exp(2. * log_mean_coeff)
+        return mean, std
+
+    def prior_sampling(self, shape):
+        return torch.randn(*shape)
+
+    def prior_logp(self, z):
+        logZ = -0.5 * np.log(2 * np.pi)
+        return logZ - z ** 2 / 2
+
+class VESDE(SDE):
+    def __init__(self, sigma_min=0.01, sigma_max=50, N=1000):
+        super().__init__(N)
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.discrete_sigmas = torch.exp(torch.linspace(np.log(self.sigma_min), np.log(self.sigma_max), N))
+        self.N = N
+
+    @property
+    def T(self):
+        return 1
+
+    def sde(self, x, t):
+        sigma = self.sigma_min * (self.sigma_max / self.sigma_min) ** t
+        drift = torch.zeros_like(x)
+        diffusion = sigma * torch.sqrt(torch.tensor(2 * (np.log(self.sigma_max) - np.log(self.sigma_min)),
+                                                    device=t.device))
+        return drift, diffusion
+
+    def marginal_prob(self, x, t):
+        std = self.sigma_min * (self.sigma_max / self.sigma_min) ** t
+        mean = x
+        return mean, std
+
+    def prior_sampling(self, shape):
+        return torch.randn(*shape) * self.sigma_max
+
+    def prior_logp(self, z):
+        shape = z.shape
+        N = np.prod(shape[1:])
+        return -N / 2. * np.log(2 * np.pi * self.sigma_max ** 2) - torch.sum(z ** 2, dim=1) / (2 * self.sigma_max ** 2)
+
+    def discretize(self, x, t):
+        timestep = (t * (self.N - 1) / self.T).long()
+        sigma = self.discrete_sigmas.to(t.device)[timestep]
+
+        adjacent_sigma = torch.where(timestep == 0, torch.zeros_like(t), self.discrete_sigmas.to(t.device)[timestep - 1].to(t.device))
+        f = torch.zeros_like(x)
+        G = torch.sqrt(sigma ** 2 - adjacent_sigma ** 2)
+        return f, G
 
 ################################################################################
 # sampling
@@ -505,7 +927,6 @@ def main():
     
     # TODO: configs
     dataname = 'adult'
-    batch_size = 256
     
     # data
     dataset_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
@@ -530,6 +951,41 @@ def main():
     print(f'number of parameters: {num_params}')
     
     # training
+    ema = ExponentialMovingAverage(score_model.parameters(), decay=config.model.ema_rate)
+    
+    optimizer = get_optimizer(config, score_model.parameters())
+    state = dict(optimizer=optimizer, model=score_model, ema=ema, step=0, epoch=0)
+
+    initial_step = int(state['epoch'])
+    train_data = train_z
+    train_iter = DataLoader(train_data, batch_size=config.training.batch_size, shuffle=True, num_workers=4)
+    
+    # set up sdes
+    if config.training.sde.lower() == 'vpsde':
+        sde = VPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
+        sampling_eps = 1e-3
+    elif config.training.sde.lower() == 'subvpsde':
+        sde = SubVPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
+        sampling_eps = 1e-3
+    elif config.training.sde.lower() == 'vesde':
+        sde = VESDE(sigma_min=config.model.sigma_min, sigma_max=config.model.sigma_max, N=config.model.num_scales)
+        sampling_eps = 1e-5
+    else:
+        raise NotImplementedError(f'SDE {config.training.sde} unknown')
+    
+    optimize_fn = optimization_manager(config)
+    continuous = config.training.continuous
+    reduce_mean = config.training.reduce_mean
+    likelihood_weighting = config.training.likelihood_weighting
+    
+    train_step_fn = get_step_fn(
+        sde, train=True, optimize_fn=optimize_fn,
+        reduce_mean=reduce_mean, continuous=continuous,
+        likelihood_weighting=likelihood_weighting, workdir=ckpt_dir, spl=config.training.spl, 
+        alpha0=config.model.alpha0, beta0=config.model.beta0,
+    )
+
+    best_loss = np.inf
     
     # sampling
     pass
