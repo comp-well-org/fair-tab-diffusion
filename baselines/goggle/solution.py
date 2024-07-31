@@ -550,7 +550,7 @@ class GoggleModel:
         best_loss = np.inf
         for epoch in range(self.epochs):
             train_loss, num_samples = 0.0, 0
-            train_loss_epoch, num_samples_epoch = 0.0, 0
+            train_loss_epoch = 0.0
             for i, data in enumerate(train_loader):
                 data = data.float()
                 if self.iter_opt:
