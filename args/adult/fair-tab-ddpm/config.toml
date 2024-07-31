@@ -1,14 +1,14 @@
 [data]
-name = 'adult'
+name = "adult"
 normalize = true
-path = '/rdf/db/public-tabular-datasets/'
+path = "/rdf/db/public-tabular-datasets/"
 batch_size = 256
 
 [exp]
-method = 'fair-tab-ddpm'
-mode = 'unet'
-device = 'cuda'
-home = '/rdf/experiments/fair-tab-diffusion-exps/'
+method = "fair-tab-ddpm"
+mode = "unet"
+device = "cuda"
+home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 fair = true
 
@@ -21,8 +21,8 @@ cond_momentum_beta = 0.5
 overall_guid_weight = 1.0
 
 [model]
-parametrization = 'eps'
-scheduler = 'cosine'
+parametrization = "eps"
+scheduler = "cosine"
 max_beta = 0.2
 n_timesteps = 100
 d_x_emb = 64
@@ -30,23 +30,30 @@ d_t_emb = 128
 d_cond_emb = 128
 n_base_channels = 16
 n_groups = 8
-n_channels_factors = [2, 2]
+n_channels_factors = [
+    2,
+    2,
+]
 n_res_blocks = 1
 n_tf_layers = 1
 n_heads = 1
-attention_levels = [0]
+attention_levels = [
+    0,
+]
 
 [train]
-n_epochs = 4000
-lr = 1e-3
+n_epochs = 1000
+lr = 0.0003938516710354697
 weight_decay = 0.0
 max_non_improve = 500
 
 [sample]
-dist = 'fair'
+dist = "fair"
 n_samples = 10000
 batch_size = 1000
 n_seeds = 3
 
 [eval]
-sk_clf_choice = ['CatBoost']
+sk_clf_choice = [
+    "CatBoost",
+]
