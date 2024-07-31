@@ -1,14 +1,12 @@
 import os
 import dgl
 import time
-import math
 import json
 import torch
 import warnings
 import numpy as np
 import pandas as pd
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import optim
 from dgl.nn import GraphConv, SAGEConv
 from torch.utils.data import DataLoader
@@ -689,14 +687,15 @@ def main():
     gen.model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
     start_time = time.time()
     samples = gen.sample(n_samples)
-    x_con = samples[:, :d_numerical]
-    x_dis = samples[:, d_numerical:]
-    
-    sample_con = x_con.detach().cpu().numpy()
-    sample_dis = x_dis.detach().cpu().numpy()
+    sample_con = samples[:, :d_numerical]
+    sample_dis = samples[:, d_numerical:]
     sample_dis = onehot_to_categorical(sample_dis, categories)
     sample = np.concatenate([sample_con, sample_dis], axis=1)
-    print(sample.shape)
+    end_time = time.time()
+    print(f'sampling time: {(end_time - start_time):.2f}s')
+    
+    sample = pd.DataFrame(sample)
+    print(sample.head(3))
 
 if __name__ == '__main__':
     main()
