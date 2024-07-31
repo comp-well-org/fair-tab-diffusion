@@ -2,6 +2,8 @@
 
 ## Setup
 
+PyTorch version is `2.3.0+cu121`.
+
 ```bash
 pip install -r requirements.txt
 pip install dgl -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
