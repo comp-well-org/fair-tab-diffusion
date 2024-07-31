@@ -25,6 +25,47 @@ warnings.filterwarnings('ignore')
 
 ################################################################################
 # data
+def preprocess(data_dir):
+    xn_train = pd.read_csv(os.path.join(data_dir, 'xn_train.csv'), index_col=0)
+    xn_eval = pd.read_csv(os.path.join(data_dir, 'xn_eval.csv'), index_col=0)
+    xn_test = pd.read_csv(os.path.join(data_dir, 'xn_test.csv'), index_col=0)
+    y_train = pd.read_csv(os.path.join(data_dir, 'y_train.csv'), index_col=0)
+    y_eval = pd.read_csv(os.path.join(data_dir, 'y_eval.csv'), index_col=0)
+    y_test = pd.read_csv(os.path.join(data_dir, 'y_test.csv'), index_col=0)
+    
+    # only the first column of y_train, y_eval, y_test is used
+    y_train = y_train.iloc[:, 0]
+    y_eval = y_eval.iloc[:, 0]
+    y_test = y_test.iloc[:, 0]
+    
+    data_train = pd.concat([xn_train, y_train], axis=1)
+    data_eval = pd.concat([xn_eval, y_eval], axis=1)
+    data_test = pd.concat([xn_test, y_test], axis=1)
+    # print(data_train.head())
+    
+    with open(os.path.join(data_dir, 'desc.json')) as f:
+        desc = json.load(f)
+    # print(json.dumps(desc, indent=4))
+    
+    categories = desc['n_unq_cat_od_x_lst'] + [desc['n_unq_y']]
+    d_numerical = desc['d_num_x']
+    X_train_num = data_train.iloc[:, :d_numerical].values
+    X_eval_num = data_eval.iloc[:, :d_numerical].values
+    X_test_num = data_test.iloc[:, :d_numerical].values
+    
+    X_train_cat = data_train.iloc[:, d_numerical:].values
+    X_eval_cat = data_eval.iloc[:, d_numerical:].values
+    X_test_cat = data_test.iloc[:, d_numerical:].values
+    
+    # convert X_train_cat, X_eval_cat, X_test_cat to one-hot encoding
+    X_train_cat = categorical_to_onehot(X_train_cat, categories)
+    X_eval_cat = categorical_to_onehot(X_eval_cat, categories)
+    X_test_cat = categorical_to_onehot(X_test_cat, categories)
+    
+    X_num_sets = (X_train_num, X_eval_num, X_test_num)
+    X_cat_sets = (X_train_cat, X_eval_cat, X_test_cat)
+    
+    return X_num_sets, X_cat_sets, categories, d_numerical
 
 ################################################################################
 # model
@@ -511,6 +552,7 @@ class GoggleModel:
         best_loss = np.inf
         for epoch in range(self.epochs):
             train_loss, num_samples = 0.0, 0
+            train_loss_epoch, num_samples_epoch = 0.0, 0
             for i, data in enumerate(train_loader):
                 data = data.float()
                 if self.iter_opt:
@@ -544,20 +586,51 @@ class GoggleModel:
                     self.optimiser.step()
                     train_loss += loss.item()
                     num_samples += data.shape[0]
-            
+                    
+                train_loss_epoch = train_loss / num_samples
+                if epoch == self.epochs - 1 and i == len(train_loader) - 1:
+                    print(f'training -> epoch: {epoch + 1}/{self.epochs}, loss: {train_loss_epoch:.4f} -- best: {best_loss:.4f}')
+                else:
+                    print(f'training -> epoch: {epoch + 1}/{self.epochs}, loss: {train_loss_epoch:.4f} -- best: {best_loss:.4f}', end='\r')
+                
             train_loss /= num_samples
             if train_loss <= best_loss:
                 best_loss = train_loss
                 torch.save(self.model.state_dict(), model_save_path)
 
-    def sample(self, x_test):
-        count = x_test.shape[0]
+    def sample(self, count):
         X_synth = self.model.sample(count)
         X_synth = X_synth.cpu().detach().numpy()
         return X_synth
 
 ################################################################################
 # utils
+def categorical_to_onehot(cat_matrix, categories):
+    cat_matrix = cat_matrix.astype(int)
+    # create a list to store the one-hot encoded values
+    onehot = []
+    # iterate over the columns of the categorical matrix
+    for i in range((cat_matrix.shape[1])):
+        # create a one-hot encoded matrix for the i-th column
+        onehot_i = np.eye(categories[i])[cat_matrix[:, i]]
+        # append the one-hot encoded matrix to the list
+        onehot.append(onehot_i)
+    # concatenate the one-hot encoded matrices along the columns
+    return np.concatenate(onehot, axis=1)
+
+def onehot_to_categorical(onehot_matrix, categories):
+    # create a list to store the categorical values
+    categorical = []
+    # iterate over the columns of the one-hot matrix
+    st = 0
+    for i in range(len(categories)):
+        ed = st + categories[i]
+        # create a categorical matrix for the i-th column
+        categorical_i = np.argmax(onehot_matrix[:, st:ed], axis=1)
+        # append the categorical matrix to the list
+        categorical.append(categorical_i)
+        st = ed
+    return np.stack(categorical, axis=1)
 
 ################################################################################
 # training
@@ -573,32 +646,57 @@ def main():
     
     # TODO: configs
     dataname = 'adult'
+    lr = 1e-3
+    n_epochs = 1
+    batch_size = 256
+    n_samples = 1000
     
     # data
+    dataset_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
+    ckpt_dir = f'./ckpt/{dataname}'
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+        
+    X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
+    X_train_num, X_eval_num, X_test_num = X_num_sets
+    X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
+    X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
+    X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
+    categories = np.array(categories)
+    X_train = torch.cat([X_train_num, X_train_cat], dim=1)
     
     # model
     gen = GoggleModel(
-        ds_name=dataname,
-        input_dim=X_train.shape[1],
-        encoder_dim=2048,
-        encoder_l=4,
-        het_encoding=True,
-        decoder_dim=2048,
-        decoder_l=4,
-        threshold=0.1,
-        decoder_arch='gcn',
-        graph_prior=None,
-        prior_mask=None,
-        device=device,
-        beta=1,
-        learning_rate=0.01,
-        seed=42,
+        ds_name=dataname, input_dim=X_train.shape[1], encoder_dim=2048,
+        encoder_l=4, het_encoding=True, decoder_dim=2048,
+        decoder_l=4, threshold=0.1, decoder_arch='gcn',
+        graph_prior=None, prior_mask=None, beta=1,
+        learning_rate=lr, seed=42, epochs=n_epochs,
+        batch_size=batch_size, device=device,
     )
     
+    num_params = sum(p.numel() for p in gen.model.encoder.parameters() if p.requires_grad)
+    print(f'number of parameters in encoder: {num_params}')
+    
     # training
+    start_time = time.time()
+    train_loader = DataLoader(X_train, batch_size=gen.batch_size, shuffle=True)
+    gen.fit(train_loader, f'{ckpt_dir}/model.pt')
+    end_time = time.time()
+    print(f'training time: {(end_time - start_time):.2f}s')
     
     # sampling
-    pass
+    gen.model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
+    start_time = time.time()
+    samples = gen.sample(n_samples)
+    x_con = samples[:, :d_numerical]
+    x_dis = samples[:, d_numerical:]
+    
+    sample_con = x_con.detach().cpu().numpy()
+    sample_dis = x_dis.detach().cpu().numpy()
+    sample_dis = onehot_to_categorical(sample_dis, categories)
+    sample = np.concatenate([sample_con, sample_dis], axis=1)
+    print(sample.shape)
 
 if __name__ == '__main__':
     main()
