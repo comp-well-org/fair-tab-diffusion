@@ -25,6 +25,7 @@ bioread
 imblearn
 peft
 datasets
+ml-collections
 
 # natural language processing
 nltk

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
+import ml_collections as mlc
 from torch.utils.data import DataLoader
 
 warnings.filterwarnings('ignore')
@@ -277,10 +278,10 @@ class NCSNpp(nn.Module):
 
         if conditional:
             modules.append(nn.Linear(embed_dim, nf * 4))
-            modules[-1].weight.data = default_init()(modules[-1].weight.shape)
+            modules[-1].weight.data = default_init().init(modules[-1].weight.shape)
             nn.init.zeros_(modules[-1].bias)
             modules.append(nn.Linear(nf * 4, nf * 4))
-            modules[-1].weight.data = default_init()(modules[-1].weight.shape)
+            modules[-1].weight.data = default_init().init(modules[-1].weight.shape)
             nn.init.zeros_(modules[-1].bias)
 
         dim = config.data.image_size
@@ -330,6 +331,15 @@ class NCSNpp(nn.Module):
 
         return h
 
+def get_model(name):
+    return _MODELS[name]
+
+def create_model(config):
+    model_name = config.model.name
+    score_model = get_model(model_name)(config)
+    score_model = score_model.to(config.device)
+    return score_model
+
 ################################################################################
 # utils
 def categorical_to_onehot(cat_matrix, categories):
@@ -358,6 +368,129 @@ def onehot_to_categorical(onehot_matrix, categories):
         categorical.append(categorical_i)
         st = ed
     return np.stack(categorical, axis=1)
+
+################################################################################
+# configs
+def get_default_configs():
+    config = mlc.ConfigDict()
+
+    config.seed = 42
+    config.device = torch.device('cuda:1')
+    config.baseline = False
+
+    # training
+    config.training = training = mlc.ConfigDict()
+    config.training.batch_size = 1000
+    training.epoch = 10000
+    training.snapshot_freq = 300
+    training.eval_freq = 100
+    training.snapshot_freq_for_preemption = 100
+    training.snapshot_sampling = True
+    training.likelihood_weighting = False
+    training.continuous = True
+    training.reduce_mean = False
+    training.eps = 1e-05
+    training.loss_weighting = False
+    training.spl = True
+    training.lambda_ = 0.5
+
+    #fine_tune
+    training.eps_iters = 50
+    training.fine_tune_epochs = 50
+    training.retrain_type = 'median'
+    training.hutchinson_type = 'Rademacher'
+    training.tolerance = 1e-03
+
+    # sampling
+    config.sampling = sampling = mlc.ConfigDict()
+    sampling.n_steps_each = 1
+    sampling.noise_removal = True
+    sampling.probability_flow = False
+    sampling.snr = 0.16
+
+    # evaluation
+    config.eval = evaluate = mlc.ConfigDict()
+    evaluate.num_samples = 22560
+
+    # data
+    config.data = data = mlc.ConfigDict()
+    data.centered = False
+    data.uniform_dequantization = False
+
+    # model
+    config.model = model = mlc.ConfigDict()
+    model.sigma_min = 0.01
+    model.sigma_max = 10.
+    model.num_scales = 50
+    model.alpha0 = 0.3
+    model.beta0 = 0.95
+
+    # optimization
+    config.optim = optim = mlc.ConfigDict()
+    optim.weight_decay = 0
+    optim.optimizer = 'Adam'
+    optim.lr = 2e-3
+    optim.beta1 = 0.9
+    optim.eps = 1e-8
+    optim.warmup = 5000
+    optim.grad_clip = 1.
+
+    # test
+    config.test = mlc.ConfigDict()
+
+    return config
+
+def get_config(name):
+    config = get_default_configs()
+
+    config.data.dataset = name
+    config.training.batch_size = 1000
+    config.eval.batch_size = 1000
+    config.data.image_size = 77
+
+    # training
+    training = config.training
+    training.sde = 'vesde'
+    training.continuous = True
+    training.reduce_mean = True
+    training.n_iters = 100000
+    training.tolerance = 1e-03
+    training.hutchinson_type = 'Rademacher'
+    training.retrain_type = 'median'
+
+    # sampling
+    sampling = config.sampling
+    sampling.method = 'ode'
+    sampling.predictor = 'euler_maruyama'
+    sampling.corrector = 'none'
+
+    # model
+    model = config.model
+    model.layer_type = 'concatsquash'
+    model.name = 'ncsnpp'
+    model.scale_by_sigma = False
+    model.ema_rate = 0.9999
+    model.activation = 'elu'
+
+    model.nf = 64
+    model.hidden_dims = (1024, 2048, 1024, 1024)
+    model.conditional = True
+    model.embedding_type = 'fourier'
+    model.fourier_scale = 16
+    model.conv_size = 3
+
+    model.sigma_min = 0.01
+    model.sigma_max = 10.
+
+    # test
+    test = config.test
+    test.n_iter = 1
+
+    # optim
+    optim = config.optim
+    optim.lr = 2e-3
+
+    return config
 
 ################################################################################
 # training
@@ -391,7 +524,10 @@ def main():
     # print(train_z.shape)
     
     # model
-    score_model = create_model(model_name='CustomModel', config=None, device='cuda')
+    config = get_config(dataname)
+    score_model = create_model(config)
+    num_params = sum(p.numel() for p in score_model.parameters())
+    print(f'number of parameters: {num_params}')
     
     # training
     
