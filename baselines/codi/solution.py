@@ -806,7 +806,7 @@ def main():
     X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
     X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
-    num_class = np.array(categories)
+    categories = np.array(categories)
     
     # TODO: configs
     # continuous model
@@ -845,7 +845,7 @@ def main():
     optim_dis = torch.optim.Adam(model_dis.parameters(), lr=lr_dis)
     sched_dis = torch.optim.lr_scheduler.LambdaLR(optim_dis, lr_lambda=warmup_lr_fn)
     trainer_dis = MultinomialDiffusion(
-        num_class, X_train_cat.shape, model_dis, beta_1, beta_t, n_timesteps,
+        categories, X_train_cat.shape, model_dis, beta_1, beta_t, n_timesteps,
     ).to(device)
     
     num_params_con = sum(p.numel() for p in model_con.parameters())
@@ -877,7 +877,7 @@ def main():
     sample = sampling_synthetic_data(
         model_con, model_dis, trainer_dis, ckpt_dir, 
         X_train_num, X_train_cat,
-        num_class, net_sampler, n_timesteps,
+        categories, net_sampler, n_timesteps,
         device,
     )
     end_time = time.time()

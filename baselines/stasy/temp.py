@@ -1,63 +1,8 @@
-import os
-import time
-import math
-import json
 import torch
-import warnings
 import numpy as np
-import pandas as pd
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
+import math
 
-warnings.filterwarnings('ignore')
-
-################################################################################
-# data
-def preprocess(data_dir):
-    xn_train = pd.read_csv(os.path.join(data_dir, 'xn_train.csv'), index_col=0)
-    xn_eval = pd.read_csv(os.path.join(data_dir, 'xn_eval.csv'), index_col=0)
-    xn_test = pd.read_csv(os.path.join(data_dir, 'xn_test.csv'), index_col=0)
-    y_train = pd.read_csv(os.path.join(data_dir, 'y_train.csv'), index_col=0)
-    y_eval = pd.read_csv(os.path.join(data_dir, 'y_eval.csv'), index_col=0)
-    y_test = pd.read_csv(os.path.join(data_dir, 'y_test.csv'), index_col=0)
-    
-    # only the first column of y_train, y_eval, y_test is used
-    y_train = y_train.iloc[:, 0]
-    y_eval = y_eval.iloc[:, 0]
-    y_test = y_test.iloc[:, 0]
-    
-    data_train = pd.concat([xn_train, y_train], axis=1)
-    data_eval = pd.concat([xn_eval, y_eval], axis=1)
-    data_test = pd.concat([xn_test, y_test], axis=1)
-    # print(data_train.head())
-    
-    with open(os.path.join(data_dir, 'desc.json')) as f:
-        desc = json.load(f)
-    # print(json.dumps(desc, indent=4))
-    
-    categories = desc['n_unq_cat_od_x_lst'] + [desc['n_unq_y']]
-    d_numerical = desc['d_num_x']
-    X_train_num = data_train.iloc[:, :d_numerical].values
-    X_eval_num = data_eval.iloc[:, :d_numerical].values
-    X_test_num = data_test.iloc[:, :d_numerical].values
-    
-    X_train_cat = data_train.iloc[:, d_numerical:].values
-    X_eval_cat = data_eval.iloc[:, d_numerical:].values
-    X_test_cat = data_test.iloc[:, d_numerical:].values
-    
-    # convert X_train_cat, X_eval_cat, X_test_cat to one-hot encoding
-    X_train_cat = categorical_to_onehot(X_train_cat, categories)
-    X_eval_cat = categorical_to_onehot(X_eval_cat, categories)
-    X_test_cat = categorical_to_onehot(X_test_cat, categories)
-    
-    X_num_sets = (X_train_num, X_eval_num, X_test_num)
-    X_cat_sets = (X_train_cat, X_eval_cat, X_test_cat)
-    
-    return X_num_sets, X_cat_sets, categories, d_numerical
-
-################################################################################
-# model
 NONLINEARITIES = {
     'elu': nn.ELU(),
     'relu': nn.ReLU(),
@@ -105,45 +50,41 @@ def get_act(config):
     else:
         raise NotImplementedError('activation function does not exist!')
 
-class VarianceScaling:
-    def __init__(self, scale, mode, distribution, in_axis=1, out_axis=0, dtype=torch.float32, device='cpu'):
-        self.scale = scale
-        self.mode = mode
-        self.distribution = distribution
-        self.in_axis = in_axis
-        self.out_axis = out_axis
-        self.dtype = dtype
-        self.device = device
 
-    def _compute_fans(self, shape):
-        receptive_field_size = np.prod(shape) / shape[self.in_axis] / shape[self.out_axis]
-        fan_in = shape[self.in_axis] * receptive_field_size
-        fan_out = shape[self.out_axis] * receptive_field_size
+def variance_scaling(
+    scale, mode, distribution,
+    in_axis=1, out_axis=0,
+    dtype=torch.float32,
+    device='cpu',
+):
+    def _compute_fans(shape, in_axis=1, out_axis=0):
+        receptive_field_size = np.prod(shape) / shape[in_axis] / shape[out_axis]
+        fan_in = shape[in_axis] * receptive_field_size
+        fan_out = shape[out_axis] * receptive_field_size
         return fan_in, fan_out
 
-    def init(self, shape):
-        fan_in, fan_out = self._compute_fans(shape)
-        if self.mode == 'fan_in':
+    def init(shape, dtype=dtype, device=device):
+        fan_in, fan_out = _compute_fans(shape, in_axis, out_axis)
+        if mode == 'fan_in':
             denominator = fan_in
-        elif self.mode == 'fan_out':
+        elif mode == 'fan_out':
             denominator = fan_out
-        elif self.mode == 'fan_avg':
+        elif mode == 'fan_avg':
             denominator = (fan_in + fan_out) / 2
         else:
-            raise ValueError(f'invalid mode for variance scaling initializer: {self.mode}')
-        
-        variance = self.scale / denominator
-        
-        if self.distribution == 'normal':
-            return torch.randn(*shape, dtype=self.dtype, device=self.device) * np.sqrt(variance)
-        elif self.distribution == 'uniform':
-            return (torch.rand(*shape, dtype=self.dtype, device=self.device) * 2. - 1.) * np.sqrt(3 * variance)
+            raise ValueError('invalid mode for variance scaling initializer: {}'.format(mode))
+        variance = scale / denominator
+        if distribution == 'normal':
+            return torch.randn(*shape, dtype=dtype, device=device) * np.sqrt(variance)
+        elif distribution == 'uniform':
+            return (torch.rand(*shape, dtype=dtype, device=device) * 2. - 1.) * np.sqrt(3 * variance)
         else:
             raise ValueError('invalid distribution for variance scaling initializer')
+        return init
 
 def default_init(scale=1.):
     scale = 1e-10 if scale == 0 else scale
-    return VarianceScaling(scale, 'fan_avg', 'uniform')
+    return variance_scaling(scale, 'fan_avg', 'uniform')
 
 def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
     assert len(timesteps.shape) == 1  
@@ -329,74 +270,3 @@ class NCSNpp(nn.Module):
             h = h / used_sigmas
 
         return h
-
-################################################################################
-# utils
-def categorical_to_onehot(cat_matrix, categories):
-    cat_matrix = cat_matrix.astype(int)
-    # create a list to store the one-hot encoded values
-    onehot = []
-    # iterate over the columns of the categorical matrix
-    for i in range((cat_matrix.shape[1])):
-        # create a one-hot encoded matrix for the i-th column
-        onehot_i = np.eye(categories[i])[cat_matrix[:, i]]
-        # append the one-hot encoded matrix to the list
-        onehot.append(onehot_i)
-    # concatenate the one-hot encoded matrices along the columns
-    return np.concatenate(onehot, axis=1)
-
-def onehot_to_categorical(onehot_matrix, categories):
-    # create a list to store the categorical values
-    categorical = []
-    # iterate over the columns of the one-hot matrix
-    st = 0
-    for i in range(len(categories)):
-        ed = st + categories[i]
-        # create a categorical matrix for the i-th column
-        categorical_i = np.argmax(onehot_matrix[:, st:ed], axis=1)
-        # append the categorical matrix to the list
-        categorical.append(categorical_i)
-        st = ed
-    return np.stack(categorical, axis=1)
-
-################################################################################
-# training
-
-################################################################################
-# sampling
-
-################################################################################
-# main
-def main():
-    # global variables
-    
-    # TODO: configs
-    dataname = 'adult'
-    batch_size = 256
-    
-    # data
-    dataset_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
-    ckpt_dir = f'./ckpt/{dataname}'
-    if not os.path.exists(ckpt_dir):
-        os.makedirs(ckpt_dir)
-    
-    X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
-    X_train_num, X_eval_num, X_test_num = X_num_sets
-    X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
-    X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
-    X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
-    categories = np.array(categories)
-    
-    train_z = torch.cat((X_train_num, X_train_cat), dim=1)
-    # print(train_z.shape)
-    
-    # model
-    score_model = create_model(model_name='CustomModel', config=None, device='cuda')
-    
-    # training
-    
-    # sampling
-    pass
-
-if __name__ == '__main__':
-    main()
