@@ -6,6 +6,10 @@ ipywidgets
 # style checker
 wemake-python-styleguide
 
+# deep learning
+torch
+torch_geometric
+
 # machine learning
 scikit-learn
 imblearn
@@ -24,9 +28,6 @@ datasets
 
 # natural language processing
 nltk
-
-# deep learning
-torch
 
 # hugging face
 datasets
