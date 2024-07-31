@@ -453,6 +453,16 @@ def get_score_fn(sde, model, train=False, continuous=False):
         raise NotImplementedError(f'SDE class {sde.__class__.__name__} not yet supported')
     return score_fn
 
+def save_checkpoint(ckpt_dir, state):
+    saved_state = {
+        'optimizer': state['optimizer'].state_dict(),
+        'model': state['model'].state_dict(),
+        'ema': state['ema'].state_dict(),
+        'step': state['step'],
+        'epoch': state['epoch'],
+    }
+    torch.save(saved_state, ckpt_dir)
+
 ################################################################################
 # configs
 def get_default_configs():
@@ -700,7 +710,7 @@ def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True
             losses = loss_fn(model, batch)
             if spl:
                 nll = losses
-                q_alpha = torch.tensor(alpha0 + torch.log(torch.tensor(1 + 0.0001718*state['step'] * (1 - alpha0), dtype=torch.float32))).clamp_(max=1).to(nll.device)
+                q_alpha = torch.tensor(alpha0 + torch.log(torch.tensor(1 + 0.0001718 * state['step'] * (1 - alpha0), dtype=torch.float32))).clamp_(max=1).to(nll.device)
                 q_beta = torch.tensor(beta0 + torch.log(torch.tensor(1 + 0.0001718 * state['step'] * (1 - beta0), dtype=torch.float32))).clamp_(max=1).to(nll.device)
                 logging.info(f'q_alpha: {q_alpha}, q_beta: {q_beta}')
 
@@ -919,6 +929,14 @@ class VESDE(SDE):
 
 ################################################################################
 # sampling
+def restore_checkpoint(ckpt_dir, state, device):
+    loaded_state = torch.load(ckpt_dir, map_location=device)
+    state['optimizer'].load_state_dict(loaded_state['optimizer'])
+    state['model'].load_state_dict(loaded_state['model'], strict=False)
+    state['ema'].load_state_dict(loaded_state['ema'])
+    state['step'] = loaded_state['step']
+    state['epoch'] = loaded_state['epoch']
+    return state
 
 ################################################################################
 # main
@@ -927,6 +945,7 @@ def main():
     
     # TODO: configs
     dataname = 'adult'
+    n_epochs = 2
     
     # data
     dataset_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
@@ -940,12 +959,14 @@ def main():
     X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
     categories = np.array(categories)
-    
     train_z = torch.cat((X_train_num, X_train_cat), dim=1)
-    # print(train_z.shape)
+    
+    # update config
+    config = get_config(dataname)
+    config.data.image_size = train_z.shape[1]
+    config.training.epoch = n_epochs
     
     # model
-    config = get_config(dataname)
     score_model = create_model(config)
     num_params = sum(p.numel() for p in score_model.parameters())
     print(f'number of parameters: {num_params}')
@@ -963,13 +984,10 @@ def main():
     # set up sdes
     if config.training.sde.lower() == 'vpsde':
         sde = VPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
-        sampling_eps = 1e-3
     elif config.training.sde.lower() == 'subvpsde':
         sde = SubVPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
-        sampling_eps = 1e-3
     elif config.training.sde.lower() == 'vesde':
         sde = VESDE(sigma_min=config.model.sigma_min, sigma_max=config.model.sigma_max, N=config.model.num_scales)
-        sampling_eps = 1e-5
     else:
         raise NotImplementedError(f'SDE {config.training.sde} unknown')
     
@@ -985,10 +1003,37 @@ def main():
         alpha0=config.model.alpha0, beta0=config.model.beta0,
     )
 
+    start_time = time.time()
     best_loss = np.inf
+    for epoch in range(initial_step, config.training.epoch):
+        state['epoch'] += 1
+
+        batch_loss = 0
+        batch_num = 0
+        epoch_loss = 0
+        for idx, batch in enumerate(train_iter): 
+            batch = batch.to(config.device).float()
+            num_sample = batch.shape[0]
+            batch_num += num_sample
+            loss = train_step_fn(state, batch)
+            batch_loss += loss.item() * num_sample
+            epoch_loss = batch_loss / batch_num
+
+            if epoch == config.training.epoch - 1 and idx == len(train_iter) - 1:
+                print(f'training -> epoch: {epoch + 1}/{config.training.epoch}, loss: {epoch_loss:.4f} -- best: {best_loss:.4f}')
+            else:
+                print(f'training -> epoch: {epoch + 1}/{config.training.epoch}, loss: {epoch_loss:.4f} -- best: {best_loss:.4f}', end='\r')
+        
+        batch_loss /= batch_num
+        if batch_loss < best_loss:
+            best_loss = batch_loss
+            save_checkpoint(os.path.join(ckpt_dir, 'model.pth'), state)
+            
+    end_time = time.time()
+    print(f'training time: {(end_time - start_time):.2f}s')
     
     # sampling
-    pass
+    state = restore_checkpoint(os.path.join(ckpt_dir, 'model.pth'), state, config.device)
 
 if __name__ == '__main__':
     main()
