@@ -2,7 +2,7 @@
 
 ## Setup
 
-PyTorch version is `2.3.0+cu121`.
+The PyTorch version we used in this project is `2.3.0+cu121`, and you can install the required packages by running the following command:
 
 ```bash
 pip install -r requirements.txt
