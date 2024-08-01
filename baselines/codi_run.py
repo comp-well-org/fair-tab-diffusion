@@ -22,7 +22,7 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 # importing the required files from the parent directory
-pass
+from lib import load_config, copy_file
 
 warnings.filterwarnings('ignore')
 
@@ -905,6 +905,16 @@ def main():
     parser.add_argument('--train', action='store_true', help='training')
     parser.add_argument('--sample', action='store_true', help='sampling')
     parser.add_argument('--eval', action='store_true', help='evaluation')
+
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
 
 if __name__ == '__main__':
     main()
