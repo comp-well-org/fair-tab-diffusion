@@ -912,9 +912,48 @@ def main():
     else:
         raise ValueError('config file is required')
     
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    model_config = config['model']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    # number of random seeds for sampling
+    n_seeds = sample_config['n_seeds']
+    
     # message
     print(json.dumps(config, indent=4))
     print('-' * 80)
+    
+    # random seed
+    seed = exp_config['seed']
+    torch.manual_seed(seed)
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
+    
+    # data
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+    
+    X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
+    X_train_num, X_eval_num, X_test_num = X_num_sets
+    X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
+    X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
+    X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
+    categories = np.array(categories)
 
 if __name__ == '__main__':
     main()
