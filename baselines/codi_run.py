@@ -801,17 +801,69 @@ def sampling_synthetic_data(
 
 ################################################################################
 # main
-def test():
-    # global variables
-    device = torch.device('cuda:1')
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
+
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
     
-    # TODO: configs
-    dataname = 'adult'
-    batch_size = 256
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    model_config = config['model']
+    train_config = config['train']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    device = torch.device(exp_config['device'])
+    seed = exp_config['seed']
+    torch.manual_seed(seed)
+    
+    batch_size = data_config['batch_size']
+    
+    encoder_dim_con = model_config['encoder_dim_con']
+    nf_con = model_config['nf_con']
+    lr_con = model_config['lr_con']
+    beta_1 = model_config['beta_1']
+    beta_t = model_config['beta_t']
+    n_timesteps = model_config['n_timesteps']
+    encoder_dim_dis = model_config['encoder_dim_dis']
+    nf_dis = model_config['nf_dis']
+    lr_dis = model_config['lr_dis']
+    
+    lambda_con = train_config['lambda_con']
+    lambda_dis = train_config['lambda_dis']
+    grad_clip = train_config['grad_clip']
+    total_epochs_both = train_config['total_epochs_both']
+    
+    mean_type = sample_config['mean_type']
+    var_type = sample_config['var_type']
+    n_seeds = sample_config['n_seeds']
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
     
     # data
-    dataset_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
-    ckpt_dir = f'./ckpt/{dataname}'
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
     
@@ -821,25 +873,6 @@ def test():
     X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
     categories = np.array(categories)
-    
-    # TODO: configs
-    # continuous model
-    encoder_dim_con = [256, 256, 256]
-    nf_con = 64
-    lr_con = 1e-4
-    beta_1 = 0.01
-    beta_t = 0.20
-    n_timesteps = 100
-    # discrete model
-    encoder_dim_dis = [256, 256, 256]
-    nf_dis = 64
-    lr_dis = 1e-4
-    # training
-    lambda_con, lambda_dis, grad_clip = 1.0, 1.0, 1.0
-    total_epochs_both = 1
-    # sampling
-    mean_type = 'epsilon'
-    var_type = 'fixedlarge'
     
     # model
     input_size = X_train_num.shape[1] 
@@ -861,14 +894,14 @@ def test():
     trainer_dis = MultinomialDiffusion(
         categories, X_train_cat.shape, model_dis, beta_1, beta_t, n_timesteps,
     ).to(device)
-    
+
     num_params_con = sum(p.numel() for p in model_con.parameters())
     num_params_dis = sum(p.numel() for p in model_dis.parameters())
     print_it = False
     if print_it:
         print('continuous model params: %d' % (num_params_con))
         print('discrete model params: %d' % (num_params_dis))
-    
+
     # training
     start_time = time.time()
     train_codi_model(
@@ -897,63 +930,10 @@ def test():
     end_time = time.time()
     print(f'sampling time: {end_time-start_time:.3f}s')
     print(sample.shape)
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, required=True, help='config file')
-    parser.add_argument('--exp_name', type=str, default='check')
-    parser.add_argument('--train', action='store_true', help='training')
-    parser.add_argument('--sample', action='store_true', help='sampling')
-    parser.add_argument('--eval', action='store_true', help='evaluation')
-
-    args = parser.parse_args()
-    if args.config:
-        config = load_config(args.config)
-    else:
-        raise ValueError('config file is required')
     
-    # configs
-    exp_config = config['exp']
-    data_config = config['data']
-    model_config = config['model']
-    sample_config = config['sample']
-    eval_config = config['eval']
+    # xn + xd + y -> [x + xd] + y
     
-    # number of random seeds for sampling
-    n_seeds = sample_config['n_seeds']
-    
-    # message
-    print(json.dumps(config, indent=4))
-    print('-' * 80)
-    
-    # random seed
-    seed = exp_config['seed']
-    torch.manual_seed(seed)
-    
-    # experimental directory
-    exp_dir = os.path.join(
-        exp_config['home'], 
-        data_config['name'],
-        exp_config['method'],
-        args.exp_name,
-    )
-    copy_file(
-        os.path.join(exp_dir), 
-        args.config,
-    )
-    
-    # data
-    dataset_dir = os.path.join(data_config['path'], data_config['name'])
-    ckpt_dir = os.path.join(exp_dir, 'ckpt')
-    if not os.path.exists(ckpt_dir):
-        os.makedirs(ckpt_dir)
-    
-    X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
-    X_train_num, X_eval_num, X_test_num = X_num_sets
-    X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
-    X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
-    X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
-    categories = np.array(categories)
+    # evaluation and write outputs
 
 if __name__ == '__main__':
     main()
