@@ -49,7 +49,7 @@ def main():
         subprocess.run(
             [
                 'python3.10',
-                'run_fairtabddpm.py',
+                'fairtabddpm_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
@@ -81,7 +81,7 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            'run_fairtabddpm.py',
+            'fairtabddpm_run.py',
             '--exp_name',
             'best',
             '--config',
