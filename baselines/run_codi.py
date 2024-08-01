@@ -904,4 +904,4 @@ def main():
     parser.add_argument('--eval', action='store_true', help='evaluation')
 
 if __name__ == '__main__':
-    test()
+    main()
