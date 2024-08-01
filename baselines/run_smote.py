@@ -8,6 +8,16 @@ import numpy as np
 import pandas as pd
 from sklearn.utils import check_random_state
 from imblearn.over_sampling import SMOTENC
+import sys
+
+# getting the name of the directory where the this file is present
+current = os.path.dirname(os.path.realpath(__file__))
+
+# getting the parent directory name where the current directory is present
+parent = os.path.dirname(current)
+
+# adding the parent directory to the sys.path
+sys.path.append(parent)
 
 warnings.filterwarnings('ignore')
 

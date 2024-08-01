@@ -14,6 +14,16 @@ from dataclasses import dataclass
 from torch.utils.data import DataLoader
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 from transformers import DataCollatorWithPadding, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
+import sys
+
+# getting the name of the directory where the this file is present
+current = os.path.dirname(os.path.realpath(__file__))
+
+# getting the parent directory name where the current directory is present
+parent = os.path.dirname(current)
+
+# adding the parent directory to the sys.path
+sys.path.append(parent)
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 warnings.filterwarnings('ignore')

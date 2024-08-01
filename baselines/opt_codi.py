@@ -6,6 +6,16 @@ import argparse
 import subprocess
 import lib
 from constant import EXPS_PATH
+import sys
+
+# getting the name of the directory where the this file is present
+current = os.path.dirname(os.path.realpath(__file__))
+
+# getting the parent directory name where the current directory is present
+parent = os.path.dirname(current)
+
+# adding the parent directory to the sys.path
+sys.path.append(parent)
 
 warnings.filterwarnings('ignore')
 
@@ -49,7 +59,7 @@ def main():
         subprocess.run(
             [
                 'python3.10',
-                'pipeline.py',
+                'exec_fairtabddpm.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
@@ -81,7 +91,7 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            'pipeline.py',
+            'exec_fairtabddpm.py',
             '--exp_name',
             'best',
             '--config',

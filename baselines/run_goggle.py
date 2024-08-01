@@ -19,6 +19,16 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, zeros
 from torch_geometric.typing import Adj, OptTensor
 from torch_sparse import SparseTensor, masked_select_nnz
+import sys
+
+# getting the name of the directory where the this file is present
+current = os.path.dirname(os.path.realpath(__file__))
+
+# getting the parent directory name where the current directory is present
+parent = os.path.dirname(current)
+
+# adding the parent directory to the sys.path
+sys.path.append(parent)
 
 warnings.filterwarnings('ignore')
 

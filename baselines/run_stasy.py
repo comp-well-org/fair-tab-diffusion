@@ -16,6 +16,16 @@ import torch.optim as optim
 import ml_collections as mlc
 from scipy import integrate
 from torch.utils.data import DataLoader
+import sys
+
+# getting the name of the directory where the this file is present
+current = os.path.dirname(os.path.realpath(__file__))
+
+# getting the parent directory name where the current directory is present
+parent = os.path.dirname(current)
+
+# adding the parent directory to the sys.path
+sys.path.append(parent)
 
 warnings.filterwarnings('ignore')
 

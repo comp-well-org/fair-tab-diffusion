@@ -10,6 +10,16 @@ import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+import sys
+
+# getting the name of the directory where the this file is present
+current = os.path.dirname(os.path.realpath(__file__))
+
+# getting the parent directory name where the current directory is present
+parent = os.path.dirname(current)
+
+# adding the parent directory to the sys.path
+sys.path.append(parent)
 
 warnings.filterwarnings('ignore')
 
@@ -788,7 +798,7 @@ def sampling_synthetic_data(
 
 ################################################################################
 # main
-def main():
+def test():
     # global variables
     device = torch.device('cuda:1')
     
@@ -885,5 +895,13 @@ def main():
     print(f'sampling time: {end_time-start_time:.3f}s')
     print(sample.shape)
 
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
+    parser.add_argument('--train', action='store_true', help='training')
+    parser.add_argument('--sample', action='store_true', help='sampling')
+    parser.add_argument('--eval', action='store_true', help='evaluation')
+
 if __name__ == '__main__':
-    main()
+    test()
