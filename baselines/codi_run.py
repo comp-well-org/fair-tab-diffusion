@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import math
 import json
@@ -8,10 +9,10 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch.nn as nn
+import skops.io as sio
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-import skops.io as sio
-import sys
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -24,6 +25,7 @@ sys.path.append(parent)
 
 # importing the required files from the parent directory
 from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -968,7 +970,38 @@ def main():
     end_time = time.time()
     print(f'sampling time: {end_time-start_time:.3f}s')
 
-    # evaluation and write outputs
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()

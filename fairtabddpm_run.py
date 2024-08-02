@@ -230,7 +230,6 @@ def main():
                 
                 # read synthetic data
                 x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-                xn_syn = pd.read_csv(os.path.join(synth_dir, 'xn_syn.csv'), index_col=0)
                 c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
                 y_syn = c_syn.iloc[:, 0]
                 
