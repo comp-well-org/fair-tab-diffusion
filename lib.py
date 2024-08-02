@@ -12,11 +12,11 @@ def copy_file(exp_dir, file_path) -> None:
     if not os.path.exists(exp_dir):
         os.makedirs(exp_dir)
         if os.path.exists(os.path.join(exp_dir, os.path.basename(file_path))):
-            return 0
+            shutil.copy(file_path, exp_dir)
         shutil.copy(file_path, exp_dir)
     else:
         if os.path.exists(os.path.join(exp_dir, os.path.basename(file_path))):
-            return 0
+            shutil.copy(file_path, exp_dir)
         shutil.copy(file_path, exp_dir)
 
 def write_config(config, config_file_path) -> None:

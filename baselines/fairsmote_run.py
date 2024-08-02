@@ -1,3 +1,9 @@
+import os
+import sys
+import json
+import time
+import warnings
+import argparse
 import numpy as np 
 import pandas as pd 
 from sklearn.preprocessing import MinMaxScaler
@@ -5,10 +11,7 @@ from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import silhouette_score, silhouette_samples
 from imblearn.over_sampling import SMOTENC
-import warnings
-import argparse
-import os
-import sys
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -18,6 +21,9 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -43,7 +49,7 @@ class FairBalance:
 
     def cluster(self):
         scaler = MinMaxScaler()
-        X = self.data.drop([self.sensitive_attribute, self.target], axis=1)
+        X = self.data.drop(self.sensitive_attribute + [self.target], axis=1)
         X[self.continous_features] = scaler.fit_transform(X[self.continous_features])
 
         if self.cluster_algo == 'kmeans':
@@ -63,11 +69,10 @@ class FairBalance:
             s_score = silhouette_score(X, groups)
             score_list = silhouette_samples(X, groups)
             if s_score > max_s:
-                best_k = k
                 max_s = s_score
                 best_clist = groups
                 best_slist = score_list
-        print(f'cluster the original dataset into {best_k} clusters.')
+        # print(f'cluster the original dataset into {best_k} clusters...')
         self.data['score'] = best_slist
         self.data['group'] = best_clist
         
@@ -76,10 +81,10 @@ class FairBalance:
         s_rank = np.sort(scores)
         idx = int(len(s_rank)*self.ratio)
         threshold = s_rank[idx]
-        print(f'removing {idx} samples from the original dataset...')
+        # print(f'removing {idx} samples from the original dataset...')
         self.X_clean = self.data[self.data['score'] > threshold]
 
-    def new_smote(self, dfi):
+    def new_smote(self, dfi, seed=42):
         label = self.target
         categorical_features = list(set(dfi.keys().tolist()) - set(self.continous_features))
         categorical_loc = [dfi.columns.get_loc(c) for c in categorical_features if c in dfi.keys()]
@@ -110,7 +115,7 @@ class FairBalance:
         
         min_k = max(1, min(self.knn, len(df_nns)-1))
         sm = SMOTENC(
-            categorical_features=categorical_loc, random_state=42, 
+            categorical_features=categorical_loc, random_state=seed, 
             sampling_strategy={1: len(df_nns)+ratio, 0: len(min_X)}, 
             k_neighbors=min_k,
         )
@@ -121,70 +126,160 @@ class FairBalance:
         df_new = pd.concat([dfi, df_add], ignore_index=True)
         return df_new
 
-    def generater(self):
+    def generater(self, seed=42):
         dfs = []
         groups = list(self.X_clean['group'].unique())
         for i in groups:
             dfi = self.X_clean[self.X_clean['group'] == i].drop(['group', 'score'], axis=1)
             if (len(dfi[self.target].unique()) == 1 or len(dfi) == 0):
                 continue
-            Xi_res = self.new_smote(dfi)
+            Xi_res = self.new_smote(dfi, seed)
             dfs.append(Xi_res)
         X_cres = pd.concat(list(dfs), ignore_index=True)
         return X_cres[self.features], X_cres[self.target]
 
-def balancing(x_train, target, knn, sensitive_attribute, features, drop_features, continous_features):
+def balancing(x_train, target, knn, sensitive_attribute, features, drop_features, continous_features, seed=42):
     fcb = FairBalance(
         x_train, features, 
         continous_features, drop_features, 
         sensitive_attribute, target, knn=knn,
     )
     fcb.fit()
-    X_balanced, y_balanced = fcb.generater()
+    X_balanced, y_balanced = fcb.generater(seed=seed)
     return X_balanced, y_balanced
 
 def main():
-    frac = 0.01
-    x_train = pd.read_csv('/rdf/db/public-tabular-datasets/adult/x_train.csv', index_col=0)
-    x_eval = pd.read_csv('/rdf/db/public-tabular-datasets/adult/x_eval.csv', index_col=0)
-    x_test = pd.read_csv('/rdf/db/public-tabular-datasets/adult/x_test.csv', index_col=0)
-
-    y_train = pd.read_csv('/rdf/db/public-tabular-datasets/adult/y_train.csv', index_col=0)
-    y_eval = pd.read_csv('/rdf/db/public-tabular-datasets/adult/y_eval.csv', index_col=0)
-    y_test = pd.read_csv('/rdf/db/public-tabular-datasets/adult/y_test.csv', index_col=0)
-    y_train = y_train[['label']]
-    y_eval = y_eval[['label']]
-    y_test = y_test[['label']]
-
-    data_train = pd.concat([x_train, y_train], axis=1)
-    data_train = data_train.sample(frac=frac, random_state=42)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
     
-    # validation and test sets which are not used
-    data_eval = pd.concat([x_eval, y_eval], axis=1)
-    data_test = pd.concat([x_test, y_test], axis=1)
-
-    df = data_train
-    knn = 5
-    target = 'label'
-    drop_features = []
-    features = list(set(df.keys().tolist()) - set(drop_features + [target]))
-    continous_features = [
-        'age',
-        'fnlwgt',
-        'education-num',
-        'capital-gain',
-        'capital-loss',
-        'hours-per-week',
-    ]
-    sensitive_attribute = 'sex'
-    privileged_group = 1
-
-    X_balanced, y_balanced = balancing(
-        data_train, 'label', 
-        knn, sensitive_attribute, features, 
-        drop_features, continous_features,
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    model_config = config['model']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    seed = exp_config['seed']
+    n_seeds = sample_config['n_seeds']
+    knn = model_config['knn']
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
     )
-    data_balanced = pd.concat([X_balanced, y_balanced], axis=1)
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
+    
+    # data
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+    
+    x_train = pd.read_csv(f'{dataset_dir}/x_train.csv', index_col=0)
+    x_eval = pd.read_csv(f'{dataset_dir}/x_eval.csv', index_col=0)
+
+    y_train = pd.read_csv(f'{dataset_dir}/y_train.csv', index_col=0)
+    y_eval = pd.read_csv(f'{dataset_dir}/y_eval.csv', index_col=0)
+    
+    label_col = y_train.columns.tolist()[0]
+    
+    y_train = y_train[[label_col]]
+    y_eval = y_eval[[label_col]]
+    
+    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
+        description = json.load(f)
+    data_train = pd.concat([x_train, y_train], axis=1)
+    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
+    d_num_x = description['d_num_x']
+    x_num_cols = feature_cols[:d_num_x]
+    sst_col_names = description['sst_col_names']
+
+    drop_features = []
+    features = list(set(data_train.keys().tolist()) - set(drop_features + [label_col]))
+
+    # model
+    start_time = time.time()
+    fcb = FairBalance(
+        data_train, features, 
+        x_num_cols, drop_features,
+        sst_col_names, label_col, knn=knn,
+    )
+    fcb.fit()
+    end_time = time.time()
+    print(f'training time: {end_time - start_time:.2f}s')
+
+    # sampling
+    start_time = time.time()
+    for i in range(n_seeds):
+        random_seed = seed + i
+
+        x_syn_balanced, y_syn_balanced = fcb.generater(seed=random_seed)
+        # reordering the columns of the balanced dataset
+        x_syn_balanced = x_syn_balanced[feature_cols]
+        
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+        
+        x_syn_balanced.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        y_syn_balanced.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, x_syn: {x_syn_balanced.shape}, y_syn: {y_syn_balanced.shape}')
+    end_time = time.time()
+    print(f'sampling time: {end_time - start_time:.2f}s')
+    
+    synth_dir = os.path.join(exp_dir, 'synthesis')
+    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
+        json.dump(description, f, indent=4)
+    
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()
