@@ -297,7 +297,7 @@ def train(
         'input_dim': input_dim,
     }
 
-def main():
+def test():
     df_name = '/rdf/db/public-tabular-datasets/adult/d_all.csv'
     S = 'sex'
     Y = 'class'
@@ -346,6 +346,11 @@ def main():
     fake_df = get_original_data(fake_numpy_array, all_df, ohe, scaler)
     fake_df = fake_df[all_df.columns]
     fake_df.to_csv('adult.csv')
+    
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
 
 if __name__ == '__main__':
     main()
