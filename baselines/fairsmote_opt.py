@@ -37,7 +37,7 @@ def main():
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
     def objective(trial):        
-        knn = trial.suggest_categorical('knn', [2, 10])
+        knn = trial.suggest_categorical('knn', [2, 21])
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
@@ -66,9 +66,7 @@ def main():
                 '--exp_name',
                 exp_name,
             ],
-            check=True,                 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE,
+            check=True,
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)

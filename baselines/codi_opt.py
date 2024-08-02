@@ -57,10 +57,11 @@ def main():
         trial.set_user_attr('config', base_config)
         lib.write_config(base_config, f'{exp_dir}/config.toml')
         
+        method_str = ''.join(METHOD.split('-'))
         subprocess.run(
             [
                 'python3.10',
-                f'{METHOD}_run.py',
+                f'{method_str}_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
