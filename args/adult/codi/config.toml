@@ -34,7 +34,6 @@ lambda_con = 1.0
 lambda_dis = 1.0 
 grad_clip = 1.0
 total_epochs_both = 1
-lr = 0.0003938516710354697
 
 [sample]
 mean_type = 'epsilon'
