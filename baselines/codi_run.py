@@ -10,6 +10,7 @@ import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+import skops.io as sio
 import sys
 
 # getting the name of the directory where the this file is present
@@ -873,6 +874,11 @@ def main():
     X_train_num = torch.tensor(X_train_num.astype(np.float32)).float()
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
     categories = np.array(categories)
+    norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
+    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
+        description = json.load(f)
+    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
     
     # model
     input_size = X_train_num.shape[1] 
@@ -920,19 +926,48 @@ def main():
         model_con, beta_1, beta_t, n_timesteps, mean_type, var_type,
     ).to(device)
     
+    # sampling with seeds
     start_time = time.time()
-    sample = sampling_synthetic_data(
-        model_con, model_dis, trainer_dis, ckpt_dir, 
-        X_train_num, X_train_cat,
-        categories, net_sampler, n_timesteps,
-        device,
-    )
+    for i in range(n_seeds):
+        random_seed = seed + i
+        torch.manual_seed(random_seed)
+        sample = sampling_synthetic_data(
+            model_con, model_dis, trainer_dis, ckpt_dir, 
+            X_train_num, X_train_cat,
+            categories, net_sampler, n_timesteps,
+            device,
+        )
+        # xn + xd + y -> [x + xd] + y
+        xn_num = sample[:, :d_numerical]
+        x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
+        x_cat = sample[:, d_numerical: -1]
+        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+        x_syn = np.concatenate([x_num, x_cat], axis=1)
+        y_syn = sample[:, -1]
+        
+        # to dataframe
+        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+        y_syn = pd.DataFrame(y_syn, columns=label_cols)
+
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+        
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
+        
+    # copy `data_desc` as json file and `norm_fn` as skops file
+    synth_dir = os.path.join(exp_dir, 'synthesis')
+    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
+        json.dump(description, f, indent=4)
+    sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
+    
     end_time = time.time()
     print(f'sampling time: {end_time-start_time:.3f}s')
-    print(sample.shape)
-    
-    # xn + xd + y -> [x + xd] + y
-    
+
     # evaluation and write outputs
 
 if __name__ == '__main__':

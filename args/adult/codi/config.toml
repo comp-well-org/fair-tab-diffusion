@@ -39,7 +39,6 @@ lr = 0.0003938516710354697
 [sample]
 mean_type = 'epsilon'
 var_type = 'fixedlarge'
-n_samples = 10000
 n_seeds = 3
 
 [eval]
