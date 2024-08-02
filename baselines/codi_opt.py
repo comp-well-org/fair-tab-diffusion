@@ -37,8 +37,6 @@ def main():
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
     def objective(trial):        
-        lr_dis = trial.suggest_float('lr', 0.00001, 0.003, log=True)
-        lr_con = trial.suggest_float('lr', 0.00001, 0.003, log=True)
         total_epochs_both = trial.suggest_categorical('total_epochs_both', [100, 500, 1000])
         n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
         
@@ -53,8 +51,6 @@ def main():
         )
         os.makedirs(exp_dir, exist_ok=True)
         
-        base_config['model']['lr_dis'] = lr_dis
-        base_config['model']['lr_con'] = lr_con
         base_config['model']['n_timesteps'] = n_timesteps
         base_config['train']['total_epochs_both'] = total_epochs_both
         
