@@ -4,8 +4,6 @@ import shutil
 import warnings
 import argparse
 import subprocess
-import lib
-from constant import EXPS_PATH
 import sys
 
 # getting the name of the directory where the this file is present
@@ -17,7 +15,12 @@ parent = os.path.dirname(current)
 # adding the parent directory to the sys.path
 sys.path.append(parent)
 
+import lib
+from constant import EXPS_PATH, ARGS_DIR
+
 warnings.filterwarnings('ignore')
+
+METHOD = 'fair-smote'
 
 def main():
     parser = argparse.ArgumentParser()
@@ -31,12 +34,10 @@ def main():
         direction='maximize',
         sampler=optuna.samplers.TPESampler(seed=0),
     )
-    base_config_path = f'./args/{dataset}/fair-tab-ddpm/config.toml'
+    base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
     def objective(trial):        
-        lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
-        n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
-        n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
+        knn = trial.suggest_categorical('knn', [2, 10])
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
@@ -49,27 +50,25 @@ def main():
         )
         os.makedirs(exp_dir, exist_ok=True)
         
-        base_config['train']['lr'] = lr
-        base_config['train']['n_epochs'] = n_epochs
-        base_config['model']['n_timesteps'] = n_timesteps
+        base_config['model']['knn'] = knn
         
         trial.set_user_attr('config', base_config)
         lib.write_config(base_config, f'{exp_dir}/config.toml')
+        print(f'writing config to {exp_dir}/config.toml')
         
+        method_str = ''.join(METHOD.split('-'))
         subprocess.run(
             [
                 'python3.10',
-                'exec_fairtabddpm.py',
+                f'{method_str}_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
                 exp_name,
-                '--train',
-                '--sample',
-                '--eval',
-                '--override',
             ],
-            check=True,
+            check=True,                 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)
@@ -79,7 +78,7 @@ def main():
     
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
     
-    best_config_dir = os.path.join(EXPS_PATH, dataset, 'fair-tab-ddpm', 'best')
+    best_config_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'best')
     os.makedirs(best_config_dir, exist_ok=True)
     best_config_path = os.path.join(best_config_dir, 'config.toml')
     
@@ -91,15 +90,11 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            'exec_fairtabddpm.py',
+            f'{METHOD}_run.py',
             '--exp_name',
             'best',
             '--config',
             f'{best_config_path}',
-            '--train',
-            '--sample',
-            '--eval',
-            '--override',
         ],
         check=True,
     )
@@ -107,7 +102,7 @@ def main():
         os.path.join(
             EXPS_PATH,
             dataset,
-            'fair-tab-ddpm',
+            f'{METHOD}',
             'many-exps',
         ),
     )
