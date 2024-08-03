@@ -15,8 +15,12 @@ def copy_file(exp_dir, file_path) -> None:
         shutil.copy(file_path, exp_dir, follow_symlinks=True)
     else:
         if os.path.exists(temp):
-            return 0
-        shutil.copy(file_path, exp_dir, follow_symlinks=True)
+            temp_file = os.path.join(exp_dir, os.path.basename(file_path) + '_temp')
+            shutil.copy(file_path, temp_file, follow_symlinks=True)
+            os.remove(temp)
+            shutil.move(temp_file, temp)
+        else:
+            shutil.copy(file_path, exp_dir, follow_symlinks=True)
 
 def write_config(config, config_file_path) -> None:
     with open(config_file_path, 'wb') as f:

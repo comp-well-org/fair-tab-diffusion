@@ -1,0 +1,25 @@
+[data]
+name = "adult"
+path = "/rdf/db/public-tabular-datasets/"
+
+[exp]
+method = "fair-tab-gan"
+device = "cuda:1"
+home = "/rdf/experiments/fair-tab-diffusion-exps/"
+seed = 2024
+
+[fair]
+sensitive = "sex"
+underprivileged = "Female"
+label = "class"
+desirable = ">50K"
+
+[model]
+
+[sample]
+n_seeds = 3
+
+[eval]
+sk_clf_choice = [
+    "CatBoost",
+]

@@ -1,4 +1,5 @@
 import os
+import sys
 import dgl
 import time
 import json
@@ -19,7 +20,6 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, zeros
 from torch_geometric.typing import Adj, OptTensor
 from torch_sparse import SparseTensor, masked_select_nnz
-import sys
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))

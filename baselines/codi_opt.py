@@ -36,6 +36,8 @@ def main():
     )
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
+    method_str_py = ''.join(METHOD.split('-'))
+    
     def objective(trial):        
         total_epochs_both = trial.suggest_categorical('total_epochs_both', [100, 500, 1000])
         n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
@@ -57,11 +59,10 @@ def main():
         trial.set_user_attr('config', base_config)
         lib.write_config(base_config, f'{exp_dir}/config.toml')
         
-        method_str = ''.join(METHOD.split('-'))
         subprocess.run(
             [
                 'python3.10',
-                f'{method_str}_run.py',
+                f'{method_str_py}_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
@@ -89,7 +90,7 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            f'{METHOD}_run.py',
+            f'{method_str_py}_run.py',
             '--exp_name',
             'best',
             '--config',

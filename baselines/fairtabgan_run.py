@@ -1,17 +1,18 @@
+import os
+import sys
 import copy
-import numpy as np
-import pandas as pd
+import json
+import warnings
 import argparse
 import torch
+import numpy as np
+import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import QuantileTransformer
 from torch.utils.data import TensorDataset, DataLoader
-import warnings
-import sys
-import os
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -21,6 +22,9 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -351,6 +355,93 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
+    
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    fair_config = config['fair']
+    
+    sensitive = fair_config['sensitive']
+    underprevileged = fair_config['underprivileged']
+    label = fair_config['label']
+    desirable = fair_config['desirable']
+
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
+    
+    # data
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
+        description = json.load(f)
+
+    df_name = os.path.join(dataset_dir, 'd_all.csv')
+    train_name = os.path.join(dataset_dir, 'd_train.csv')
+    eval_name = os.path.join(dataset_dir, 'd_eval.csv')
+    test_name = os.path.join(dataset_dir, 'd_test.csv')
+    S = sensitive
+    Y = label
+    underprivileged_value = underprevileged
+    desirable_value = desirable
+
+    all_df = pd.read_csv(df_name, index_col=0)
+    train_df = pd.read_csv(train_name, index_col=0)
+    eval_df = pd.read_csv(eval_name, index_col=0)
+    test_df = pd.read_csv(test_name, index_col=0)
+    all_idx = all_df.index
+    train_idx = train_df.index 
+    eval_idx = eval_df.index
+    test_idx = test_df.index
+    size_of_fake_data = len(train_df)
+    
+    # reletive postion
+    train_idx_relative = [i for i in range(len(all_idx)) if all_idx[i] in train_idx]
+    eval_idx_relative = [i for i in range(len(all_idx)) if all_idx[i] in eval_idx]
+    test_idx_relative = [i for i in range(len(all_idx)) if all_idx[i] in test_idx]
+    
+    S_under = underprivileged_value
+    Y_desire = desirable_value
+    all_df[S] = all_df[S].astype(object)
+    all_df[Y] = all_df[Y].astype(object)
+    
+    device = torch.device(exp_config['device'])
+
+    solution = train(
+        all_df, S, Y, S_under, Y_desire,
+        train_idx_relative,
+        eval_idx_relative,
+        test_idx_relative,
+        device=device,
+        batch_size=256,
+        epochs=1,
+        fair_epochs=10,
+        lamda=0.5,
+    )
+    generator = solution['generator']
+    input_dim = solution['input_dim']
+    ohe = solution['ohe']
+    scaler = solution['scaler']
 
 if __name__ == '__main__':
     main()
