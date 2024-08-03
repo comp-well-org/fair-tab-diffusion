@@ -214,6 +214,7 @@ def train(
     epochs=500, 
     fair_epochs=10, 
     lamda=0.5,
+    lr=0.0002,
 ):
     sol_dict = prepare_data(
         data_df, S, Y, S_under, Y_desire,
@@ -242,18 +243,18 @@ def train(
         priv_index, undesire_index, desire_index,
     ).to(device)
 
-    gen_optimizer = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    gen_optimizer_fair = torch.optim.Adam(generator.parameters(), lr=0.0001, betas=(0.5, 0.999))
-    crit_optimizer = torch.optim.Adam(critic.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    gen_optimizer = torch.optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999))
+    gen_optimizer_fair = torch.optim.Adam(generator.parameters(), lr=lr / 2, betas=(0.5, 0.999))
+    crit_optimizer = torch.optim.Adam(critic.parameters(), lr=lr, betas=(0.5, 0.999))
 
     critic_losses = []
     cur_step = 0
     
     for i in range(epochs):
         if i == epochs - 1:
-            print(f'epoch {i}/{epochs}')
+            print(f'epoch {i + 1}/{epochs}')
         else:
-            print(f'epoch {i}/{epochs}', end='\r')
+            print(f'epoch {i + 1}/{epochs}', end='\r')
         for data in train_loader:
             data[0] = data[0].to(device)
             batch_size = data[0].shape[0]
@@ -302,56 +303,6 @@ def train(
         'test_data': sol_dict['test_data'],
         'input_dim': input_dim,
     }
-
-def test():
-    df_name = '/rdf/db/public-tabular-datasets/adult/d_all.csv'
-    S = 'sex'
-    Y = 'class'
-    underprivileged_value = 'Female'
-    desirable_value = '>50K'
-    size_of_fake_data = 1000
-    
-    all_df = pd.read_csv(df_name, index_col=0)
-    train_df = pd.read_csv('/rdf/db/public-tabular-datasets/adult/d_train.csv', index_col=0)
-    eval_df = pd.read_csv('/rdf/db/public-tabular-datasets/adult/d_eval.csv', index_col=0)
-    test_df = pd.read_csv('/rdf/db/public-tabular-datasets/adult/d_test.csv', index_col=0)
-    all_idx = all_df.index
-    train_idx = train_df.index 
-    eval_idx = eval_df.index
-    test_idx = test_df.index
-    
-    # reletive postion
-    train_idx_relative = [i for i in range(len(all_idx)) if all_idx[i] in train_idx]
-    eval_idx_relative = [i for i in range(len(all_idx)) if all_idx[i] in eval_idx]
-    test_idx_relative = [i for i in range(len(all_idx)) if all_idx[i] in test_idx]
-    
-    S_under = underprivileged_value
-    Y_desire = desirable_value
-    all_df[S] = all_df[S].astype(object)
-    all_df[Y] = all_df[Y].astype(object)
-    
-    device = torch.device('cuda:1')
-    
-    solution = train(
-        all_df, S, Y, S_under, Y_desire,
-        train_idx_relative,
-        eval_idx_relative,
-        test_idx_relative,
-        device=device,
-        batch_size=256,
-        epochs=1,
-        fair_epochs=10,
-        lamda=0.5,
-    )
-    generator = solution['generator']
-    input_dim = solution['input_dim']
-    ohe = solution['ohe']
-    scaler = solution['scaler']
-    
-    fake_numpy_array = generator(torch.randn(size=(size_of_fake_data, input_dim), device=device)).cpu().detach().numpy()
-    fake_df = get_original_data(fake_numpy_array, all_df, ohe, scaler)
-    fake_df = fake_df[all_df.columns]
-    fake_df.to_csv('adult.csv')
     
 def main():
     parser = argparse.ArgumentParser()
@@ -380,6 +331,7 @@ def main():
     batch_size = train_config['batch_size']
     n_epochs = train_config['n_epochs']
     fair_epochs = train_config['fair_epochs']
+    lr = train_config['lr']
     n_seeds = sample_config['n_seeds']
 
     # message
@@ -450,6 +402,7 @@ def main():
         epochs=n_epochs,
         fair_epochs=fair_epochs,
         lamda=0.5,
+        lr=lr,
     )
     end_time = time.time()
     print(f'training time: {(end_time - start_time):.2f}s')

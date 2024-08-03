@@ -20,7 +20,8 @@ from constant import EXPS_PATH, ARGS_DIR
 
 warnings.filterwarnings('ignore')
 
-METHOD = 'codi'
+# TODO: change the method name
+METHOD = 'great'
 
 def main():
     parser = argparse.ArgumentParser()
@@ -39,7 +40,7 @@ def main():
     method_str_py = ''.join(METHOD.split('-'))
     
     def objective(trial):
-        # NOTE: hyperparameters start here
+        # TODO: hyperparameters start here
         lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
         n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
         n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
@@ -55,7 +56,7 @@ def main():
         )
         os.makedirs(exp_dir, exist_ok=True)
         
-        # NOTE: edit the config here
+        # TODO: edit the config here
         base_config['train']['lr'] = lr
         base_config['train']['n_epochs'] = n_epochs
         base_config['model']['n_timesteps'] = n_timesteps
