@@ -14,7 +14,10 @@ underprivileged = "Female"
 label = "class"
 desirable = ">50K"
 
-[model]
+[train]
+batch_size = 256
+n_epochs = 1
+fair_epochs = 1
 
 [sample]
 n_seeds = 3

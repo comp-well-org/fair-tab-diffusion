@@ -2,14 +2,17 @@ import os
 import sys
 import copy
 import json
+import time
 import warnings
 import argparse
 import torch
 import numpy as np
 import pandas as pd
+import skops.io as sio
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.preprocessing import QuantileTransformer
 from torch.utils.data import TensorDataset, DataLoader
@@ -247,11 +250,10 @@ def train(
     cur_step = 0
     
     for i in range(epochs):
-        print('epoch {}'.format(i + 1))
-        if i + 1 <= (epochs - fair_epochs):
-            print('training for accuracy')
-        if i + 1 > (epochs - fair_epochs):
-            print('training for fairness')
+        if i == epochs - 1:
+            print(f'epoch {i}/{epochs}')
+        else:
+            print(f'epoch {i}/{epochs}', end='\r')
         for data in train_loader:
             data[0] = data[0].to(device)
             batch_size = data[0].shape[0]
@@ -366,11 +368,19 @@ def main():
     exp_config = config['exp']
     data_config = config['data']
     fair_config = config['fair']
+    train_config = config['train']
+    sample_config = config['sample']
+    eval_config = config['eval']
     
+    seed = exp_config['seed']
     sensitive = fair_config['sensitive']
     underprevileged = fair_config['underprivileged']
     label = fair_config['label']
     desirable = fair_config['desirable']
+    batch_size = train_config['batch_size']
+    n_epochs = train_config['n_epochs']
+    fair_epochs = train_config['fair_epochs']
+    n_seeds = sample_config['n_seeds']
 
     # message
     print(json.dumps(config, indent=4))
@@ -395,6 +405,8 @@ def main():
         os.makedirs(ckpt_dir)
     with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
         description = json.load(f)
+    d_num_x = description['d_num_x']
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
 
     df_name = os.path.join(dataset_dir, 'd_all.csv')
     train_name = os.path.join(dataset_dir, 'd_train.csv')
@@ -427,21 +439,90 @@ def main():
     
     device = torch.device(exp_config['device'])
 
+    start_time = time.time()
     solution = train(
         all_df, S, Y, S_under, Y_desire,
         train_idx_relative,
         eval_idx_relative,
         test_idx_relative,
         device=device,
-        batch_size=256,
-        epochs=1,
-        fair_epochs=10,
+        batch_size=batch_size,
+        epochs=n_epochs,
+        fair_epochs=fair_epochs,
         lamda=0.5,
     )
+    end_time = time.time()
+    print(f'training time: {(end_time - start_time):.2f}s')
+    
     generator = solution['generator']
     input_dim = solution['input_dim']
     ohe = solution['ohe']
     scaler = solution['scaler']
+    
+    cat_encoder = sio.load(os.path.join(dataset_dir, 'cat_encoder.skops'))
+    label_encoder = sio.load(os.path.join(dataset_dir, 'label_encoder.skops'))
+
+    # sampling with seeds
+    start_time = time.time()
+    for i in range(n_seeds):
+        random_seed = seed + i
+        torch.manual_seed(random_seed)
+        fake_numpy_array = generator(torch.randn(size=(size_of_fake_data, input_dim), device=device)).cpu().detach().numpy()
+        fake_df = get_original_data(fake_numpy_array, all_df, ohe, scaler)
+        x_syn_num = fake_df.iloc[:, :d_num_x]
+        x_syn_cat = fake_df.iloc[:, d_num_x: -1]
+        y_syn = fake_df.iloc[:, -1]
+        
+        # transform categorical data
+        x_cat_cols = x_syn_cat.columns
+        x_syn_cat = cat_encoder.transform(x_syn_cat)
+        x_syn_cat = pd.DataFrame(x_syn_cat, columns=x_cat_cols)
+        x_syn = pd.concat([x_syn_num, x_syn_cat], axis=1)
+        y_syn = label_encoder.transform(pd.DataFrame(y_syn))
+        y_syn = pd.DataFrame(y_syn, columns=label_cols)
+
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, x_syn: {x_syn.shape}, y_syn: {y_syn.shape}')
+    end_time = time.time()
+    print(f'sampling time: {(end_time - start_time):.2f}s')
+    
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()
