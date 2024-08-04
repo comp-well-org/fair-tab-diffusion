@@ -9,6 +9,8 @@ seed = 2024
 
 [model]
 
+[train]
+
 [sample]
 n_seeds = 3
 

@@ -1,5 +1,7 @@
 import os
+import sys
 import json
+import time
 import torch
 import random
 import logging
@@ -8,13 +10,14 @@ import argparse
 import typing as tp
 import numpy as np
 import pandas as pd
+import skops.io as sio
 from tqdm import tqdm
 from datasets import Dataset
 from dataclasses import dataclass
 from torch.utils.data import DataLoader
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 from transformers import DataCollatorWithPadding, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
-import sys
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -24,6 +27,10 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+# importing the required files from the parent directory
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 warnings.filterwarnings('ignore')
@@ -416,24 +423,60 @@ class GReaT:
 ################################################################################
 # main
 def main():
-    # global variables
-    device = 'cuda:1'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
     
-    # TODO: configs
-    dataname = 'adult'
-    n_epochs = 1
-    batch_size = 8
-    n_samples = 2000
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    train_config = config['train']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    batch_size = data_config['batch_size']
+    device = exp_config['device']
+    seed = exp_config['seed']
+    n_epochs = train_config['n_epochs']
+    n_seeds = sample_config['n_seeds']
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
     
     # data
-    train_df = pd.read_csv(f'/rdf/db/public-tabular-datasets/{dataname}/d_train.csv', index_col=0)
-    
-    # model
-    curr_dir = os.path.dirname(os.path.abspath(__file__))
-    ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
-
+    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
+        description = json.load(f)
+    d_num_x = description['d_num_x']
+    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
+    d_num_x = description['d_num_x']
+    x_num_cols = feature_cols[:d_num_x]
+    x_cat_cols = feature_cols[d_num_x:]
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+    
+    # data
+    train_df = pd.read_csv(os.path.join(dataset_dir, 'd_train.csv'), index_col=0)
+    n_samples = len(train_df)
+    
+    # model
     great = GReaT(
         'distilgpt2',                         
         epochs=n_epochs,          
@@ -454,7 +497,72 @@ def main():
     great._update_column_information(data_df)
     great._update_conditional_information(data_df, conditional_col=None)    
     samples = great.sample(n_samples, k=100, device=device)
-    print(samples.head(3))
+
+    cat_encoder = sio.load(os.path.join(dataset_dir, 'cat_encoder.skops'))
+    label_encoder = sio.load(os.path.join(dataset_dir, 'label_encoder.skops'))
+
+    # sampling with seeds
+    start_time = time.time()
+    for i in range(n_seeds):
+        random_seed = seed + i
+        torch.manual_seed(random_seed)
+        samples = great.sample(n_samples, k=100, device=device)
+
+        x_syn_num = samples.iloc[:, :d_num_x]
+        x_syn_cat = samples.iloc[:, d_num_x: -1]
+        y_syn = samples.iloc[:, -1]
+        
+        # transform categorical data
+        x_cat_cols = x_syn_cat.columns
+        x_syn_cat = cat_encoder.transform(x_syn_cat)
+        x_syn_cat = pd.DataFrame(x_syn_cat, columns=x_cat_cols)
+        x_syn = pd.concat([x_syn_num, x_syn_cat], axis=1)
+        y_syn = label_encoder.transform(pd.DataFrame(y_syn))
+        y_syn = pd.DataFrame(y_syn, columns=label_cols)
+
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, x_syn: {x_syn.shape}, y_syn: {y_syn.shape}')
+    
+    end_time = time.time()
+    print(f'sampling time: {(end_time - start_time):.2f}s')
+
+    # # evaluation
+    # x_eval = pd.read_csv(
+    #     os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+    #     index_col=0,
+    # )
+    # c_eval = pd.read_csv(
+    #     os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+    #     index_col=0,
+    # )
+    # y_eval = c_eval.iloc[:, 0]
+    
+    # # evaluate classifiers trained on synthetic data
+    # metric = {}
+    # for clf_choice in eval_config['sk_clf_choice']:
+    #     aucs = []
+    #     for i in range(n_seeds):
+    #         random_seed = seed + i
+    #         synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+    #         # read synthetic data
+    #         x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+    #         c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+    #         y_syn = c_syn.iloc[:, 0]
+            
+    #         # train classifier
+    #         clf = default_sk_clf(clf_choice, random_seed)
+    #         clf.fit(x_syn, y_syn)
+    #         y_pred = clf.predict_proba(x_eval)[:, 1]
+    #         aucs.append(roc_auc_score(y_eval, y_pred))
+    #     metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    # with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+    #     json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()

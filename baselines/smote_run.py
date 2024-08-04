@@ -1,6 +1,7 @@
 """SMOTE."""
 
 import os
+import sys
 import json
 import warnings
 import argparse
@@ -8,7 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.utils import check_random_state
 from imblearn.over_sampling import SMOTENC
-import sys
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -18,6 +19,10 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+# importing the required files from the parent directory
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -156,7 +161,7 @@ def sample_smote(
 
 ################################################################################
 # main
-def main():    
+def test():    
     # TODO: configs
     dataname = 'adult'
     
@@ -177,6 +182,17 @@ def main():
         seed=0,
     )
     print(x_res.shape, y_res.shape)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
+
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
 
 if __name__ == '__main__':
     main()

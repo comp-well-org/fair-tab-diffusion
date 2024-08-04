@@ -8,6 +8,7 @@ import warnings
 import argparse
 import numpy as np
 import pandas as pd
+import skops.io as sio
 import torch.nn as nn
 from torch import optim
 from dgl.nn import GraphConv, SAGEConv
@@ -20,6 +21,7 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, zeros
 from torch_geometric.typing import Adj, OptTensor
 from torch_sparse import SparseTensor, masked_select_nnz
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -29,6 +31,10 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+# importing the required files from the parent directory
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -644,22 +650,58 @@ def onehot_to_categorical(onehot_matrix, categories):
 ################################################################################
 # main
 def main():
-    # global variables
-    device = 'cuda:1'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
     
-    # TODO: configs
-    dataname = 'adult'
-    lr = 1e-3
-    n_epochs = 1
-    batch_size = 256
-    n_samples = 1000
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    model_config = config['model']
+    train_config = config['train']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    seed = exp_config['seed']
+    device = exp_config['device']
+    batch_size = data_config['batch_size']
+    encoder_dim = model_config['encoder_dim']
+    encoder_l = model_config['encoder_l']
+    decoder_dim = model_config['decoder_dim']
+    decoder_l = model_config['decoder_l']
+    lr = train_config['lr']
+    n_epochs = train_config['n_epochs']
+    n_seeds = sample_config['n_seeds']
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
     
     # data
-    dataset_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
-    ckpt_dir = f'./ckpt/{dataname}'
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
-        
+    norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
+    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
+        description = json.load(f)
+    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+    
     X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
     X_train_num, X_eval_num, X_test_num = X_num_sets
     X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
@@ -667,12 +709,13 @@ def main():
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
     categories = np.array(categories)
     X_train = torch.cat([X_train_num, X_train_cat], dim=1)
-    
+
     # model
     gen = GoggleModel(
-        ds_name=dataname, input_dim=X_train.shape[1], encoder_dim=2048,
-        encoder_l=4, het_encoding=True, decoder_dim=2048,
-        decoder_l=4, threshold=0.1, decoder_arch='gcn',
+        ds_name=data_config['name'], input_dim=X_train.shape[1], 
+        encoder_dim=encoder_dim,
+        encoder_l=encoder_l, het_encoding=True, decoder_dim=decoder_dim,
+        decoder_l=decoder_l, threshold=0.1, decoder_arch='gcn',
         graph_prior=None, prior_mask=None, beta=1,
         learning_rate=lr, seed=42, epochs=n_epochs,
         batch_size=batch_size, device=device,
@@ -691,16 +734,85 @@ def main():
     # sampling
     gen.model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
     start_time = time.time()
-    samples = gen.sample(n_samples)
-    sample_con = samples[:, :d_numerical]
-    sample_dis = samples[:, d_numerical:]
-    sample_dis = onehot_to_categorical(sample_dis, categories)
-    sample = np.concatenate([sample_con, sample_dis], axis=1)
+    n_samples = X_train.shape[0]
+    print(f'n_samples: {n_samples}')
+    
+    for i in range(n_seeds):
+        random_seed = seed + i
+        torch.manual_seed(random_seed)
+        
+        samples = []
+        for _ in range(n_samples // batch_size + 1):
+            sample = gen.sample(batch_size)
+            samples.append(sample)
+        samples = np.concatenate(samples, axis=0)
+        sample_con = samples[:, :d_numerical]
+        sample_dis = samples[:, d_numerical:]
+        sample_dis = onehot_to_categorical(sample_dis, categories)
+        sample = np.concatenate([sample_con, sample_dis], axis=1)
+        
+        xn_num = sample[:, :d_numerical]
+        x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
+        x_cat = sample[:, d_numerical: -1]
+        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+        x_syn = np.concatenate([x_num, x_cat], axis=1)
+        y_syn = sample[:, -1]
+        
+        # to dataframe
+        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+        y_syn = pd.DataFrame(y_syn, columns=label_cols)
+        
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+            
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
+
+    # copy `data_desc` as json file and `norm_fn` as skops file
+    synth_dir = os.path.join(exp_dir, 'synthesis')
+    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
+        json.dump(description, f, indent=4)
+    sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
+    
     end_time = time.time()
     print(f'sampling time: {(end_time - start_time):.2f}s')
     
-    sample = pd.DataFrame(sample)
-    print(sample.head(3))
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()

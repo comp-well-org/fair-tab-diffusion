@@ -26,7 +26,7 @@ METHOD = 'great'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='adult')
-    parser.add_argument('--n_trials', type=int, default=20)
+    parser.add_argument('--n_trials', type=int, default=8)
     args = parser.parse_args()
     dataset = args.dataset
     n_trials = args.n_trials
@@ -41,9 +41,8 @@ def main():
     
     def objective(trial):
         # TODO: hyperparameters start here
-        lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
-        n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
-        n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
+        batch_size = trial.suggest_categorical('batch_size', [4, 8])
+        n_epochs = trial.suggest_categorical('n_epochs', [20, 50, 100, 200])
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
@@ -57,9 +56,8 @@ def main():
         os.makedirs(exp_dir, exist_ok=True)
         
         # TODO: edit the config here
-        base_config['train']['lr'] = lr
+        base_config['data']['batch_size'] = batch_size
         base_config['train']['n_epochs'] = n_epochs
-        base_config['model']['n_timesteps'] = n_timesteps
         
         trial.set_user_attr('config', base_config)
         lib.write_config(base_config, f'{exp_dir}/config.toml')
