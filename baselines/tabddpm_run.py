@@ -1207,12 +1207,44 @@ def main():
         raise ValueError('config file is required')
     
     # configs
-    # exp_config = config['exp']
-    # guid_config = config['guid']
-    # data_config = config['data']
-    # model_config = config['model']
-    # sample_config = config['sample']
-    # eval_config = config['eval']
+    data_config = config['data']
+    exp_config = config['exp']
+    model_config = config['model']
+    train_config = config['train']
+    eval_config = config['eval']
+    
+    # data
+    data_module = XYCTabDataModule(
+        root=os.path.join(data_config['path'], data_config['name']),
+        batch_size=data_config['batch_size'],
+    )
+    data_desc = data_module.get_data_description()
+    d_in = data_desc['d_oh_x']
+    n_unq_y = data_desc['n_unq_y']
+    n_unq_cat_od_x_lst = np.array(data_desc['n_unq_cat_od_x_lst'])
+    d_num_x = data_desc['d_num_x']
+    
+    # model
+    denoise_fn = MLPDenoiseFn(
+        d_in=d_in,
+        n_unq_y=n_unq_y,
+        is_y_cond=True,
+        rtdl_params=model_config['rtdl_params'],
+        dim_t=model_config['dim_t'],
+    )
+    
+    # diffusion
+    diffusion = GaussianMultinomialDiffusion(
+        num_classes=n_unq_cat_od_x_lst,
+        num_numerical_features=d_num_x,
+        denoise_fn=denoise_fn,
+        device='cuda:1',
+        scheduler='cosine',
+        max_beta=0.2,
+        num_timesteps=model_config['num_timesteps'],
+        is_fair=train_config['is_fair'],
+        gaussian_parametrization='eps',
+    )
 
 if __name__ == '__main__':
     main()
