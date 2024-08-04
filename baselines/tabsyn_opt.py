@@ -43,7 +43,6 @@ def main():
         # TODO: hyperparameters start here
         lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
         n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
-        n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
@@ -59,7 +58,6 @@ def main():
         # TODO: edit the config here
         base_config['train']['lr'] = lr
         base_config['train']['n_epochs'] = n_epochs
-        base_config['model']['n_timesteps'] = n_timesteps
         
         trial.set_user_attr('config', base_config)
         lib.write_config(base_config, f'{exp_dir}/config.toml')

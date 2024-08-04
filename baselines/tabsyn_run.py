@@ -1034,9 +1034,11 @@ def main():
     eval_config = config['eval']
     
     device = exp_config['device']
+    seed = exp_config['seed']
     batch_size = data_config['batch_size']
     n_epochs = train_config['n_epochs']
-    lr = train_config['lr']
+    lr = train_config['lr'] 
+    n_seeds = sample_config['n_seeds']
     
     # experimental directory
     exp_dir = os.path.join(
@@ -1060,6 +1062,8 @@ def main():
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
     norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
+    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
     X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
     X_train_num, X_eval_num, X_test_num = X_num_sets
     X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
@@ -1074,5 +1078,132 @@ def main():
         num_workers=4,
     )
 
+    # model
+    model = ModelVAE(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head=N_HEAD, factor=FACTOR, bias=True)
+    model = model.to(device)
+
+    pre_encoder = EncoderModel(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head=N_HEAD, factor=FACTOR).to(device)
+    pre_decoder = DecoderModel(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head=N_HEAD, factor=FACTOR).to(device)
+    pre_encoder.eval()
+    pre_decoder.eval()
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=WD)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=10, verbose=True)
+    
+    # training latent model
+    model_save_path = f'{ckpt_dir}/model.pt'
+    encoder_save_path = f'{ckpt_dir}/encoder.pt'
+    decoder_save_path = f'{ckpt_dir}/decoder.pt'
+    train_latent_model(
+        model, pre_encoder, pre_decoder, optimizer, scheduler, n_epochs,
+        train_loader, X_train_num, X_train_cat, X_eval_num, X_eval_cat,
+        model_save_path, encoder_save_path, decoder_save_path, ckpt_dir,
+        min_beta=0.1, max_beta=1.0, lambd=0.95,
+        device=device,
+    )
+    
+    # training diffusion model
+    train_z = get_input_train(ckpt_dir)
+    in_dim = train_z.shape[1] 
+    mean = train_z.mean(0)
+    train_z = (train_z - mean) / 2
+    train_data = train_z
+    train_loader = DataLoader(
+        train_data,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+    )
+    denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
+    num_params = sum(p.numel() for p in denoise_fn.parameters())
+    print('the number of parameters:', num_params)
+    model = Model(denoise_fn=denoise_fn, hid_dim=train_z.shape[1]).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=0)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=20, verbose=True)
+    train_diffusion_model(
+        model, optimizer, scheduler, n_epochs, train_loader, ckpt_dir, device,
+    )
+    
+    # loading    
+    in_dim = train_z.shape[1] 
+    mean = train_z.mean(0)
+    denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
+    
+    model = Model(denoise_fn=denoise_fn, hid_dim=train_z.shape[1]).to(device)
+    model.load_state_dict(torch.load(f'{ckpt_dir}/diffusion.pt'))
+
+    start_time = time.time()
+    
+    # sampling
+    for i in range(n_seeds):
+        random_seed = seed + i
+        random_seed = seed + i
+        torch.manual_seed(random_seed)
+        
+        num_samples = train_z.shape[0]
+        sample_dim = in_dim
+
+        x_next = sample(model.denoise_fn_D, num_samples, sample_dim, device=device)
+        x_next = x_next * 2 + mean.to(device)
+
+        syn_data = x_next.float().cpu().numpy()
+        
+        embedding_save_path = f'{ckpt_dir}/train_z.npy'
+        train_z = torch.tensor(np.load(embedding_save_path)).float()
+        train_z = train_z[:, 1:, :]
+        B, num_tokens, token_dim = train_z.size()
+        
+        syn_num, syn_cat = split_num_cat_target(syn_data, categories, d_numerical, pre_decoder, token_dim)
+        
+        syn_num = norm_fn.inverse_transform(syn_num)
+        
+        dn_syn = np.concatenate([syn_num, syn_cat], axis=1)
+        dn_syn = pd.DataFrame(dn_syn, columns=feature_cols + label_cols)
+        x_syn = dn_syn.iloc[:, :-1]
+        y_syn = dn_syn.iloc[:, -1]
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+            
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, xn_syn: {x_syn.shape}, y_syn: {y_syn.shape}')
+    
+    end_time = time.time()
+    print(f'sampling time: {end_time - start_time:.2f}s')
+
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
+        
 if __name__ == '__main__':
     main()
