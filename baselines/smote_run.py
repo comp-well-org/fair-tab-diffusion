@@ -163,28 +163,6 @@ def sample_smote(
 
 ################################################################################
 # main
-def test():    
-    # TODO: configs
-    dataname = 'adult'
-    
-    # data
-    data_dir = f'/rdf/db/public-tabular-datasets/{dataname}/'
-    (x_train, x_val, x_test), (y_train, y_val, y_test), desc = preprocess(data_dir, subset=True)
-    d_num_x = desc['d_num_x']
-    d_cat_od_x = desc['d_cat_od_x']
-    
-    x_res, y_res = sample_smote(
-        (x_train, x_val, x_test),
-        (y_train, y_val, y_test),
-        d_num_x,
-        d_cat_od_x,
-        k_neighbours=5,
-        frac_samples=1.0,
-        frac_lam_del=0.,
-        seed=0,
-    )
-    print(x_res.shape, y_res.shape)
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')

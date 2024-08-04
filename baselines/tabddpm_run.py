@@ -1115,7 +1115,7 @@ class XYCTabTrainer:
 
 ################################################################################
 # main
-def main():
+def test():
     # global variables
     device = torch.device('cuda:1')
     

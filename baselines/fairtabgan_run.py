@@ -303,7 +303,7 @@ def train(
         'test_data': sol_dict['test_data'],
         'input_dim': input_dim,
     }
-    
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
