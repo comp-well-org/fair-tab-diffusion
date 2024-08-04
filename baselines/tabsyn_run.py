@@ -1,4 +1,5 @@
 import os
+import sys
 import math
 import time
 import json
@@ -8,6 +9,7 @@ import argparse
 import torch.optim
 import numpy as np
 import pandas as pd
+import skops.io as sio
 import torch.nn as nn
 import torch.nn.init as nn_init
 import torch.nn.functional as F
@@ -15,7 +17,7 @@ from tqdm import tqdm
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-import sys
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -25,6 +27,10 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+# importing the required files from the parent directory
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -877,14 +883,8 @@ def train_diffusion_model(
     print(f'training time: {time_elapsed:.2f}s')
 
 ################################################################################
-# sampling
-# TODO: implement this function
-def sampling_synthetic_data():
-    pass
-
-################################################################################
 # main
-def main():
+def test():
     # global variables
     WD = 0
     D_TOKEN = 4
@@ -971,9 +971,7 @@ def main():
         model, optimizer, scheduler, n_epochs, train_loader, ckpt_dir, device,
     )
 
-    # sampling
-    # sampling_synthetic_data(model)
-    
+    # sampling    
     in_dim = train_z.shape[1] 
     mean = train_z.mean(0)
     denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
@@ -1008,6 +1006,73 @@ def main():
     end_time = time.time()
     
     print(f'sampling time: {end_time - start_time:.2f}s')
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
+    
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+
+    # global variables
+    WD = 0
+    D_TOKEN = 4
+
+    N_HEAD = 1
+    FACTOR = 32
+    NUM_LAYERS = 2
+    
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    train_config = config['train']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    device = exp_config['device']
+    batch_size = data_config['batch_size']
+    n_epochs = train_config['n_epochs']
+    lr = train_config['lr']
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+
+    # data
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+    norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
+    X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
+    X_train_num, X_eval_num, X_test_num = X_num_sets
+    X_train_cat, X_eval_cat, X_test_cat = X_cat_sets
+    X_train_num, X_eval_num, X_test_num = torch.tensor(X_train_num).float(), torch.tensor(X_eval_num).float(), torch.tensor(X_test_num).float()
+    X_train_cat, X_eval_cat, X_test_cat = torch.tensor(X_train_cat).long(), torch.tensor(X_eval_cat).long(), torch.tensor(X_test_cat).long()
+    
+    train_data = TabularDataset(X_train_num, X_train_cat)
+    train_loader = DataLoader(
+        train_data,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+    )
 
 if __name__ == '__main__':
     main()
