@@ -679,6 +679,10 @@ def main():
     n_epochs = train_config['n_epochs']
     n_seeds = sample_config['n_seeds']
     
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+    
     # experimental directory
     exp_dir = os.path.join(
         exp_config['home'], 

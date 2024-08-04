@@ -446,6 +446,10 @@ def main():
     n_epochs = train_config['n_epochs']
     n_seeds = sample_config['n_seeds']
     
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+    
     # experimental directory
     exp_dir = os.path.join(
         exp_config['home'], 
@@ -488,6 +492,8 @@ def main():
     
     # training
     great.fit(train_df)
+    print('model is trained')
+    
     great.save(ckpt_dir)
     
     # sampling
@@ -506,6 +512,7 @@ def main():
     for i in range(n_seeds):
         random_seed = seed + i
         torch.manual_seed(random_seed)
+        print('sampling with seed:', random_seed)
         samples = great.sample(n_samples, k=100, device=device)
 
         x_syn_num = samples.iloc[:, :d_num_x]

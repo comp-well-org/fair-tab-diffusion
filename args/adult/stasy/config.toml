@@ -7,9 +7,9 @@ method = "stasy"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
-[model]
-
 [train]
+n_epochs = 1
+lr = 0.001
 
 [sample]
 n_seeds = 3

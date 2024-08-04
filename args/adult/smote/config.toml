@@ -8,8 +8,7 @@ home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
 [model]
-
-[train]
+knn = 5
 
 [sample]
 n_seeds = 3

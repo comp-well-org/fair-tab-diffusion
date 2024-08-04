@@ -3,10 +3,12 @@
 import os
 import sys
 import json
+import time
 import warnings
 import argparse
 import numpy as np
 import pandas as pd
+import skops.io as sio
 from sklearn.utils import check_random_state
 from imblearn.over_sampling import SMOTENC
 from sklearn.metrics import roc_auc_score
@@ -193,6 +195,127 @@ def main():
         config = load_config(args.config)
     else:
         raise ValueError('config file is required')
+    
+    # configs
+    exp_config = config['exp']
+    data_config = config['data']
+    model_config = config['model']
+    sample_config = config['sample']
+    eval_config = config['eval']
+    
+    seed = exp_config['seed']
+    n_seeds = sample_config['n_seeds']
+    k_neighbours = model_config['knn']
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
+    
+    # data
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    ckpt_dir = os.path.join(exp_dir, 'ckpt')
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
+    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
+        description = json.load(f)
+    norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
+    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+
+    (x_train, x_val, x_test), (y_train, y_val, y_test), desc = preprocess(dataset_dir, subset=False)
+    d_num_x = desc['d_num_x']
+    d_cat_od_x = desc['d_cat_od_x']
+
+    # sampling
+    start_time = time.time()
+    for i in range(n_seeds):
+        random_seed = seed + i
+        xn_res, y_res = sample_smote(
+            (x_train, x_val, x_test),
+            (y_train, y_val, y_test),
+            d_num_x,
+            d_cat_od_x,
+            k_neighbours=k_neighbours,
+            frac_samples=1.0,
+            frac_lam_del=0.,
+            seed=random_seed,
+        )
+        sample = np.concatenate([xn_res, y_res], axis=1)
+        d_numerical = d_num_x
+        xn_num = sample[:, :d_numerical]
+        x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
+        x_cat = sample[:, d_numerical: -1]
+        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+        x_syn = np.concatenate([x_num, x_cat], axis=1)
+        y_syn = sample[:, -1]
+        
+        # to dataframe
+        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+        y_syn = pd.DataFrame(y_syn, columns=label_cols)
+
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+            
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
+
+    # copy `data_desc` as json file and `norm_fn` as skops file
+    synth_dir = os.path.join(exp_dir, 'synthesis')
+    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
+        json.dump(description, f, indent=4)
+    sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
+
+    end_time = time.time()
+    print(f'sampling time: {end_time - start_time:.2f}s')
+    
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()
