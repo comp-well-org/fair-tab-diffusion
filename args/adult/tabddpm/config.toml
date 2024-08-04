@@ -1,0 +1,21 @@
+[data]
+name = "adult"
+path = "/rdf/db/public-tabular-datasets/"
+
+[exp]
+method = "stasy"
+device = "cuda:1"
+home = "/rdf/experiments/fair-tab-diffusion-exps/"
+seed = 2024
+
+[train]
+n_epochs = 1
+lr = 0.001
+
+[sample]
+n_seeds = 3
+
+[eval]
+sk_clf_choice = [
+    "CatBoost",
+]

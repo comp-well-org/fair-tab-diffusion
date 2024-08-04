@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import math
 import json
@@ -13,7 +14,7 @@ from torch.utils.data import DataLoader, Dataset
 from typing import Callable, List, Type, Union
 from inspect import isfunction
 import skops.io as sio
-import sys
+from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -23,6 +24,9 @@ parent = os.path.dirname(current)
 
 # adding the parent directory to the sys.path
 sys.path.append(parent)
+
+from lib import load_config, copy_file
+from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
@@ -1190,6 +1194,25 @@ def test():
     c_dist = data_module.get_empirical_dist()
     xn, cond = diffusion.sample_all(1000, [c_dist[0]], batch_size=500)
     print(f'synthetic data shape: {list(xn.shape)}, synthetic cond shape: {list(cond.shape)}')
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, required=True, help='config file')
+    parser.add_argument('--exp_name', type=str, default='check')
+    
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # configs
+    # exp_config = config['exp']
+    # guid_config = config['guid']
+    # data_config = config['data']
+    # model_config = config['model']
+    # sample_config = config['sample']
+    # eval_config = config['eval']
 
 if __name__ == '__main__':
     main()
