@@ -1211,7 +1211,27 @@ def main():
     exp_config = config['exp']
     model_config = config['model']
     train_config = config['train']
+    sample_config = config['sample']
     eval_config = config['eval']
+    
+    seed = exp_config['seed']
+    n_seeds = sample_config['n_seeds']
+    
+    # experimental directory
+    exp_dir = os.path.join(
+        exp_config['home'], 
+        data_config['name'],
+        exp_config['method'],
+        args.exp_name,
+    )
+    copy_file(
+        os.path.join(exp_dir), 
+        args.config,
+    )
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
     
     # data
     data_module = XYCTabDataModule(
@@ -1223,6 +1243,12 @@ def main():
     n_unq_y = data_desc['n_unq_y']
     n_unq_cat_od_x_lst = np.array(data_desc['n_unq_cat_od_x_lst'])
     d_num_x = data_desc['d_num_x']
+    
+    dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
+    x_train = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0)
+    feature_cols = x_train.columns.tolist()
+    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
     
     # model
     denoise_fn = MLPDenoiseFn(
@@ -1245,6 +1271,83 @@ def main():
         is_fair=train_config['is_fair'],
         gaussian_parametrization='eps',
     )
+
+    # training
+    trainer = XYCTabTrainer(
+        n_epochs=train_config['n_epochs'],
+        lr=train_config['lr'],
+        weight_decay=train_config['weight_decay'],
+        max_non_improve=train_config['max_non_improve'],
+        is_fair=train_config['is_fair'],
+        device=exp_config['device'],
+    )
+    start_time = time.time()
+    trainer.fit(diffusion, data_module, exp_dir)
+    end_time = time.time()
+    print(f'training time: {end_time - start_time:.2f} seconds')
+    
+    # sampling
+    start_time = time.time()
+    for i in range(n_seeds):
+        random_seed = seed + i
+        torch.manual_seed(random_seed)
+    
+        c_dist = data_module.get_empirical_dist()
+        xn, y_syn = diffusion.sample_all(len(x_train), [c_dist[0]], batch_size=1000)
+
+        xn_num = xn[:, :d_num_x]
+        x_num = norm_fn.inverse_transform(xn[:, :d_num_x])
+        x_cat = xn[:, d_num_x:]
+        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+        x_syn = np.concatenate([x_num, x_cat], axis=1)
+        
+        # to dataframe
+        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+        y_syn = pd.DataFrame(y_syn, columns=label_cols)
+        
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        if not os.path.exists(synth_dir):
+            os.makedirs(synth_dir)
+            
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
+        print()
+
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
+    
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
+            
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()
