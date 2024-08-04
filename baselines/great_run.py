@@ -472,13 +472,11 @@ def main():
     d_num_x = description['d_num_x']
     feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
     d_num_x = description['d_num_x']
-    x_num_cols = feature_cols[:d_num_x]
-    x_cat_cols = feature_cols[d_num_x:]
     label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
     
     # data
     train_df = pd.read_csv(os.path.join(dataset_dir, 'd_train.csv'), index_col=0)
-    n_samples = len(train_df)
+    n_samples = train_df.shape[0]
     
     # model
     great = GReaT(
@@ -492,9 +490,8 @@ def main():
     
     # training
     great.fit(train_df)
-    print('model is trained')
-    
     great.save(ckpt_dir)
+    print('model is trained')
     
     # sampling
     great.load_finetuned_model(f'{ckpt_dir}/model.pt')
@@ -502,7 +499,6 @@ def main():
     data_df = _array_to_dataframe(train_df, columns=None)
     great._update_column_information(data_df)
     great._update_conditional_information(data_df, conditional_col=None)    
-    samples = great.sample(n_samples, k=100, device=device)
 
     cat_encoder = sio.load(os.path.join(dataset_dir, 'cat_encoder.skops'))
     label_encoder = sio.load(os.path.join(dataset_dir, 'label_encoder.skops'))
@@ -514,6 +510,11 @@ def main():
         torch.manual_seed(random_seed)
         print('sampling with seed:', random_seed)
         samples = great.sample(n_samples, k=100, device=device)
+        
+        # reorder cols
+        x = samples[feature_cols]
+        y = samples.iloc[:, -1]
+        samples = pd.concat([x, y], axis=1)
 
         x_syn_num = samples.iloc[:, :d_num_x]
         x_syn_cat = samples.iloc[:, d_num_x: -1]
@@ -526,6 +527,12 @@ def main():
         x_syn = pd.concat([x_syn_num, x_syn_cat], axis=1)
         y_syn = label_encoder.transform(pd.DataFrame(y_syn))
         y_syn = pd.DataFrame(y_syn, columns=label_cols)
+        
+        data_syn = pd.concat([x_syn, y_syn], axis=1)
+        # drop nan
+        data_syn = data_syn.dropna()
+        x_syn = data_syn.iloc[:, :-1]
+        y_syn = data_syn.iloc[:, -1]
 
         synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
         if not os.path.exists(synth_dir):
@@ -538,38 +545,38 @@ def main():
     end_time = time.time()
     print(f'sampling time: {(end_time - start_time):.2f}s')
 
-    # # evaluation
-    # x_eval = pd.read_csv(
-    #     os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-    #     index_col=0,
-    # )
-    # c_eval = pd.read_csv(
-    #     os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-    #     index_col=0,
-    # )
-    # y_eval = c_eval.iloc[:, 0]
+    # evaluation
+    x_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
+        index_col=0,
+    )
+    c_eval = pd.read_csv(
+        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
+        index_col=0,
+    )
+    y_eval = c_eval.iloc[:, 0]
     
-    # # evaluate classifiers trained on synthetic data
-    # metric = {}
-    # for clf_choice in eval_config['sk_clf_choice']:
-    #     aucs = []
-    #     for i in range(n_seeds):
-    #         random_seed = seed + i
-    #         synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+    # evaluate classifiers trained on synthetic data
+    metric = {}
+    for clf_choice in eval_config['sk_clf_choice']:
+        aucs = []
+        for i in range(n_seeds):
+            random_seed = seed + i
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
             
-    #         # read synthetic data
-    #         x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-    #         c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-    #         y_syn = c_syn.iloc[:, 0]
+            # read synthetic data
+            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
+            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
+            y_syn = c_syn.iloc[:, 0]
             
-    #         # train classifier
-    #         clf = default_sk_clf(clf_choice, random_seed)
-    #         clf.fit(x_syn, y_syn)
-    #         y_pred = clf.predict_proba(x_eval)[:, 1]
-    #         aucs.append(roc_auc_score(y_eval, y_pred))
-    #     metric[clf_choice] = (np.mean(aucs), np.std(aucs))
-    # with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
-    #     json.dump(metric, f, indent=4)
+            # train classifier
+            clf = default_sk_clf(clf_choice, random_seed)
+            clf.fit(x_syn, y_syn)
+            y_pred = clf.predict_proba(x_eval)[:, 1]
+            aucs.append(roc_auc_score(y_eval, y_pred))
+        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+        json.dump(metric, f, indent=4)
 
 if __name__ == '__main__':
     main()

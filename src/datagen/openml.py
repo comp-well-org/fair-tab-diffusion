@@ -2,6 +2,7 @@ import os
 import json
 import skops.io as sio
 import pandas as pd
+import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder
@@ -28,7 +29,7 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None
     data_all = pd.concat([data_dict['features'], data_dict['labels']], axis=1)
     data_all = data_all.dropna()
 
-    label_ord_enc = OrdinalEncoder()
+    label_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
     data_all_cp = data_all.copy()
     data_all['label'] = label_ord_enc.fit_transform(data_all[['class']])
     features, labels = data_all[feature_columns], data_all['label']
@@ -42,7 +43,7 @@ def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None
     num_columns = [column for column in features.columns if column not in cat_columns]
     num_features = features[num_columns]
     cat_features = features[cat_columns]
-    cat_ord_enc = OrdinalEncoder()
+    cat_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
     cat_ord_features = cat_ord_enc.fit_transform(cat_features)
     cat_ord_features = pd.DataFrame(cat_ord_features, columns=cat_columns, index=cat_features.index)
 
