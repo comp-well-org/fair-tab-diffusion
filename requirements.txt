@@ -40,6 +40,9 @@ nilearn
 pydicom
 scikit-image
 
+# fairness
+fairlearn
+
 # data visualization
 seaborn
 matplotlib
