@@ -6,6 +6,8 @@ import argparse
 import subprocess
 import sys
 
+# TODO: handling "Trial 4 failed with value None."
+
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
 
