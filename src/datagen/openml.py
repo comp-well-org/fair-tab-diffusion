@@ -9,7 +9,11 @@ from sklearn.preprocessing import OrdinalEncoder
 from typing import Dict
 from .tabular import TabDataDesc, norm_tab_x_df
 
-ADULT_ID = 1590
+UCI_ADULT_ID = 1590
+COMPASS_ID = 44053
+UCI_GERMAN_CREDIT_ID = 46116
+BANK_MARKETING_ID = 44234
+LAW_SCHOOL_ID = 43890
 
 def get_openml_dataset(data_id: int) -> Dict[str, pd.DataFrame or pd.Series]:
     data_frame = fetch_openml(data_id=data_id, as_frame=True, parser='auto')
@@ -17,14 +21,14 @@ def get_openml_dataset(data_id: int) -> Dict[str, pd.DataFrame or pd.Series]:
     labels = data_frame.target
     return {'features': features, 'labels': labels}
 
-def save_adult(x_norm_type='quantile', ratios=(0.3, 0.5), seed=42, dir_path=None):
+def save_adult(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
     # constants for adult dataset
     DATASET_NAME = 'adult'
     DATASET_TYPE = 'tabular'
     N_CHANNELS = 1
 
     # start of getting adult dataset
-    data_dict = get_openml_dataset(ADULT_ID)
+    data_dict = get_openml_dataset(UCI_ADULT_ID)
     feature_columns = data_dict['features'].columns
     data_all = pd.concat([data_dict['features'], data_dict['labels']], axis=1)
     data_all = data_all.dropna()
