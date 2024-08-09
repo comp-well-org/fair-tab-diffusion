@@ -14,10 +14,6 @@ pip install dgl -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
 pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
 ```
 
-### Data and Experiments
+## Contact
 
-## Methodology
-
-## Literature Review and Implementations
-
-## Experiments
+- Zeyu Yang
