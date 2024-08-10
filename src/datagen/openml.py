@@ -10,7 +10,7 @@ from typing import Dict
 from .tabular import TabDataDesc, norm_tab_x_df
 
 UCI_ADULT_ID = 1590
-COMPASS_ID = 44053
+COMPASS_ID = 44053  # TODO
 UCI_GERMAN_CREDIT_ID = 46116
 BANK_MARKETING_ID = 44234
 LAW_SCHOOL_ID = 43890
@@ -130,6 +130,7 @@ def get_vars_from_data(
     sst_columns: list,
     cat_columns: list,
     num_columns: list,
+    label_col: str,
     label_ord_enc: OrdinalEncoder,
 ):
     num_features = features[num_columns]
@@ -139,7 +140,7 @@ def get_vars_from_data(
     cat_ord_features = pd.DataFrame(cat_ord_features, columns=cat_columns, index=cat_features.index)
 
     feature_df = pd.concat([num_features, cat_ord_features], axis=1)
-    label_df = pd.DataFrame(labels, columns=['class'])
+    label_df = pd.DataFrame(labels, columns=[label_col])
     label_df[sst_columns] = feature_df[sst_columns]
 
     col_names = num_columns + cat_columns
@@ -150,10 +151,10 @@ def get_vars_from_data(
     for col_name, cat in zip(cat_columns, cat_ord_enc.categories_):
         cat_ordinal_mapping[col_name] = list(cat)
     cat_od_y_fn = {}
-    for col_name, cat in zip(['class'], label_ord_enc.categories_):
+    for col_name, cat in zip([label_col], label_ord_enc.categories_):
         cat_od_y_fn[col_name] = list(cat)
 
-    n_unq_y = len(cat_od_y_fn['class'])
+    n_unq_y = len(cat_od_y_fn[label_col])
     n_unq_sst_lst = [len(cat_ordinal_mapping[name]) for name in sst_columns]
     n_unq_c_lst = [n_unq_y] + n_unq_sst_lst
     n_classes_lst = [len(cate) for cate in cat_ord_enc.categories_]
@@ -198,18 +199,51 @@ def save_openml_dataset(name: str, x_norm_type='quantile', ratios=(0.5, 0.5), se
             ],
             'sst_columns': ['Sex'],
         },
+        'bank': {
+            'dataset_name': 'bank', 'data_id': BANK_MARKETING_ID,
+            'dataset_type': 'tabular', 'n_channels': 1, 'label_col': 'y',
+            'cat_columns': [
+                'job', 'marital', 'education', 'default', 'housing', 
+                'loan', 'contact', 'month', 'poutcome', 'age-group',
+            ],
+            'sst_columns': ['age-group'],
+        },
+        'law': {
+            'dataset_name': 'law', 'data_id': LAW_SCHOOL_ID,
+            'dataset_type': 'tabular', 'n_channels': 1, 'label_col': 'ugpagt3',
+            'cat_columns': ['decile1', 'decile3', 'fam_inc', 'gender', 'race1', 'cluster', 'fulltime', 'bar'],
+            'sst_columns':  ['gender', 'race1'],
+        },
+        'compass': {
+            'dataset_name': 'compass', 'data_id': COMPASS_ID,
+            'dataset_type': 'tabular', 'n_channels': 1, 'label_col': 'is_recid',
+            'cat_columns': [
+                'sex', 'age_cat', 'race', 'c_charge_degree', 'decile_score.1',
+                'score_text', 'v_type_of_assessment', 'v_decile_score', 'v_score_text',
+            ],
+            'sst_columns':  ['sex', 'race'],
+        }
     }
     data_ref_dict = dataset_mapping[name]
     
     # start of getting dataset
     data_dict = get_openml_dataset(data_ref_dict['data_id'])
-    feature_columns = data_dict['features'].columns
-    data_all = pd.concat([data_dict['features'], data_dict['labels']], axis=1)
+    data_features = data_dict['features']
+    data_labels = data_dict['labels']
+    
+    # if dataset is bank, we need to add a column for age-group with a threshold of 25
+    if name == 'bank':
+        data_features['age-group'] = data_features['age'].apply(lambda x: 'young' if x <= 25 else 'old')
+    
+    # get necessary intermediate variables
+    feature_columns = data_features.columns
+    data_all = pd.concat([data_features, data_labels], axis=1)
     data_all = data_all.dropna()
     label_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
     data_all_cp = data_all.copy()
     label_col = data_ref_dict['label_col']
-    data_all['temp'] = label_ord_enc.fit_transform(data_all[[label_col]])
+    data_label = data_all[[label_col]].astype(str)
+    data_all['temp'] = label_ord_enc.fit_transform(data_label)
     data_all = data_all.drop(columns=[label_col])
     data_all = data_all.rename(columns={'temp': label_col})
     
@@ -224,7 +258,7 @@ def save_openml_dataset(name: str, x_norm_type='quantile', ratios=(0.5, 0.5), se
     # getting information from dataset
     data_ans = get_vars_from_data(
         features=features, labels=labels, sst_columns=sst_columns, cat_columns=cat_columns,
-        num_columns=num_columns, label_ord_enc=label_ord_enc,
+        num_columns=num_columns, label_col=label_col, label_ord_enc=label_ord_enc,
     )
     dataset_name = data_ref_dict['dataset_name']
     dataset_type = data_ref_dict['dataset_type']
@@ -245,10 +279,6 @@ def save_openml_dataset(name: str, x_norm_type='quantile', ratios=(0.5, 0.5), se
 
 def save_compass(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
     # constants for compass dataset
-    pass
-
-def save_bank_marketing(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
-    # constants for bank marketing dataset
     pass
 
 def save_law_school(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
