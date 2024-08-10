@@ -15,63 +15,32 @@ UCI_GERMAN_CREDIT_ID = 46116
 BANK_MARKETING_ID = 44234
 LAW_SCHOOL_ID = 43890
 
-def get_openml_dataset(data_id: int) -> Dict[str, pd.DataFrame or pd.Series]:
-    data_frame = fetch_openml(data_id=data_id, as_frame=True, parser='auto')
-    features = data_frame.data
-    labels = data_frame.target
-    return {'features': features, 'labels': labels}
-
-def save_adult(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
-    # constants for adult dataset
-    DATASET_NAME = 'adult'
-    DATASET_TYPE = 'tabular'
-    N_CHANNELS = 1
-
-    # start of getting adult dataset
-    data_dict = get_openml_dataset(UCI_ADULT_ID)
-    feature_columns = data_dict['features'].columns
-    data_all = pd.concat([data_dict['features'], data_dict['labels']], axis=1)
-    data_all = data_all.dropna()
-
-    label_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
-    data_all_cp = data_all.copy()
-    data_all['label'] = label_ord_enc.fit_transform(data_all[['class']])
-    features, labels = data_all[feature_columns], data_all['label']
-
-    cat_columns = [
-        'workclass', 'education', 'marital-status',
-        'occupation', 'relationship',
-        'race', 'sex', 'native-country',
-    ]
-    sst_columns = ['sex', 'race']
-    num_columns = [column for column in features.columns if column not in cat_columns]
-    num_features = features[num_columns]
-    cat_features = features[cat_columns]
-    cat_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
-    cat_ord_features = cat_ord_enc.fit_transform(cat_features)
-    cat_ord_features = pd.DataFrame(cat_ord_features, columns=cat_columns, index=cat_features.index)
-
-    feature_df = pd.concat([num_features, cat_ord_features], axis=1)
-    label_df = pd.DataFrame(labels, columns=['label'])
-    label_df[sst_columns] = feature_df[sst_columns]
-
-    col_names = num_columns + cat_columns
-    sst_col_indices = [col_names.index(name) for name in sst_columns]
-    d_num_x = len(num_columns)
-
-    cat_ordinal_mapping = {}
-    for col_name, cat in zip(cat_columns, cat_ord_enc.categories_):
-        cat_ordinal_mapping[col_name] = list(cat)
-    cat_od_y_fn = {}
-    for col_name, cat in zip(['label'], label_ord_enc.categories_):
-        cat_od_y_fn[col_name] = list(cat)
-
-    n_unq_y = len(cat_od_y_fn['label'])
-    n_unq_sst_lst = [len(cat_ordinal_mapping[name]) for name in sst_columns]
-    n_unq_c_lst = [n_unq_y] + n_unq_sst_lst
-    n_classes_lst = [len(cate) for cate in cat_ord_enc.categories_]
-    # end of getting adult dataset
-
+def process_dataset(
+    DATASET_NAME: str,
+    DATASET_TYPE: str,
+    N_CHANNELS: int,
+    data_all: pd.DataFrame,
+    data_all_cp: pd.DataFrame,
+    feature_df: pd.DataFrame,
+    label_df: pd.DataFrame,
+    x_norm_type: str,
+    col_names: list,
+    sst_columns: list,
+    d_num_x: int,
+    cat_columns: list,
+    num_columns: list,
+    n_classes_lst: list,
+    sst_col_indices: list,
+    cat_ordinal_mapping: dict,
+    cat_od_y_fn: dict,
+    cat_ord_enc: OrdinalEncoder,
+    label_ord_enc: OrdinalEncoder,
+    n_unq_y: int,
+    n_unq_c_lst: list,
+    ratios: tuple,
+    seed: int = 42,
+    dir_path: str = None,
+):
     data_desc = TabDataDesc(
         dataset_name=DATASET_NAME,
         dataset_type=DATASET_TYPE,
@@ -154,3 +123,185 @@ def save_adult(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None
         'cat_encoder': cat_ord_enc,
         'label_encoder': label_ord_enc,
     }
+
+
+def get_openml_dataset(data_id: int) -> Dict[str, pd.DataFrame or pd.Series]:
+    data_frame = fetch_openml(data_id=data_id, as_frame=True, parser='auto')
+    features = data_frame.data
+    labels = data_frame.target
+    return {'features': features, 'labels': labels}
+
+def save_adult(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
+    # constants for adult dataset
+    DATASET_NAME = 'adult'
+    DATASET_TYPE = 'tabular'
+    N_CHANNELS = 1
+
+    # start of getting dataset
+    data_dict = get_openml_dataset(UCI_ADULT_ID)
+    feature_columns = data_dict['features'].columns
+    data_all = pd.concat([data_dict['features'], data_dict['labels']], axis=1)
+    data_all = data_all.dropna()
+
+    label_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
+    data_all_cp = data_all.copy()
+    data_all['label'] = label_ord_enc.fit_transform(data_all[['class']])
+    features, labels = data_all[feature_columns], data_all['label']
+
+    cat_columns = [
+        'workclass', 'education', 'marital-status',
+        'occupation', 'relationship',
+        'race', 'sex', 'native-country',
+    ]
+    sst_columns = ['sex', 'race']
+    num_columns = [column for column in features.columns if column not in cat_columns]
+    num_features = features[num_columns]
+    cat_features = features[cat_columns].astype(str)
+    cat_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
+    cat_ord_features = cat_ord_enc.fit_transform(cat_features)
+    cat_ord_features = pd.DataFrame(cat_ord_features, columns=cat_columns, index=cat_features.index)
+
+    feature_df = pd.concat([num_features, cat_ord_features], axis=1)
+    label_df = pd.DataFrame(labels, columns=['label'])
+    label_df[sst_columns] = feature_df[sst_columns]
+
+    col_names = num_columns + cat_columns
+    sst_col_indices = [col_names.index(name) for name in sst_columns]
+    d_num_x = len(num_columns)
+
+    cat_ordinal_mapping = {}
+    for col_name, cat in zip(cat_columns, cat_ord_enc.categories_):
+        cat_ordinal_mapping[col_name] = list(cat)
+    cat_od_y_fn = {}
+    for col_name, cat in zip(['label'], label_ord_enc.categories_):
+        cat_od_y_fn[col_name] = list(cat)
+
+    n_unq_y = len(cat_od_y_fn['label'])
+    n_unq_sst_lst = [len(cat_ordinal_mapping[name]) for name in sst_columns]
+    n_unq_c_lst = [n_unq_y] + n_unq_sst_lst
+    n_classes_lst = [len(cate) for cate in cat_ord_enc.categories_]
+    # end of getting dataset
+
+    ans = process_dataset(
+        DATASET_NAME=DATASET_NAME,
+        DATASET_TYPE=DATASET_TYPE,
+        N_CHANNELS=N_CHANNELS,
+        data_all=data_all,
+        data_all_cp=data_all_cp,
+        feature_df=feature_df,
+        label_df=label_df,
+        x_norm_type=x_norm_type,
+        col_names=col_names,
+        sst_columns=sst_columns,
+        d_num_x=d_num_x,
+        cat_columns=cat_columns,
+        num_columns=num_columns,
+        n_classes_lst=n_classes_lst,
+        sst_col_indices=sst_col_indices,
+        cat_ordinal_mapping=cat_ordinal_mapping,
+        cat_od_y_fn=cat_od_y_fn,
+        cat_ord_enc=cat_ord_enc,
+        label_ord_enc=label_ord_enc,
+        n_unq_y=n_unq_y,
+        n_unq_c_lst=n_unq_c_lst,
+        ratios=ratios,
+        seed=seed,
+        dir_path=dir_path,
+    )
+    return ans
+
+def save_compass(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
+    # constants for compass dataset
+    pass
+
+def save_german_credit(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
+    # constants for german credit dataset
+    DATASET_NAME = 'german'
+    DATASET_TYPE = 'tabular'
+    N_CHANNELS = 1
+    
+    # start of getting dataset
+    data_dict = get_openml_dataset(UCI_GERMAN_CREDIT_ID)
+    feature_columns = data_dict['features'].columns
+    data_all = pd.concat([data_dict['features'], data_dict['labels']], axis=1)
+    data_all = data_all.dropna()
+    
+    label_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
+    data_all_cp = data_all.copy()
+    data_all['Label'] = label_ord_enc.fit_transform(data_all[['Risk']])
+    
+    # delete the 'Risk' column and rename the 'Label' column to 'Risk'
+    data_all = data_all.drop(columns=['Risk'])
+    data_all = data_all.rename(columns={'Label': 'Risk'})
+    
+    # features and labels
+    features, labels = data_all[feature_columns], data_all['Risk']
+    
+    # columns
+    cat_columns = [
+        'Sex', 'Job', 'Housing',
+        'Saving accounts', 'Checking account',
+        'Purpose',
+    ]
+    sst_columns = ['Sex']
+    num_columns = [column for column in features.columns if column not in cat_columns]
+    num_features = features[num_columns]
+    cat_features = features[cat_columns].astype(str)
+    cat_ord_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
+    cat_ord_features = cat_ord_enc.fit_transform(cat_features)
+    cat_ord_features = pd.DataFrame(cat_ord_features, columns=cat_columns, index=cat_features.index)
+    
+    # feature dataframe and label dataframe
+    feature_df = pd.concat([num_features, cat_ord_features], axis=1)
+    label_df = pd.DataFrame(labels, columns=['Risk'])
+    label_df[sst_columns] = feature_df[sst_columns]
+    col_names = num_columns + cat_columns
+    sst_col_indices = [col_names.index(name) for name in sst_columns]
+    d_num_x = len(num_columns)
+    cat_ordinal_mapping = {}
+    for col_name, cat in zip(cat_columns, cat_ord_enc.categories_):
+        cat_ordinal_mapping[col_name] = list(cat)
+    cat_od_y_fn = {}
+    for col_name, cat in zip(['label'], label_ord_enc.categories_):
+        cat_od_y_fn[col_name] = list(cat)
+    n_unq_y = len(cat_od_y_fn['label'])
+    n_unq_sst_lst = [len(cat_ordinal_mapping[name]) for name in sst_columns]
+    n_unq_c_lst = [n_unq_y] + n_unq_sst_lst
+    n_classes_lst = [len(cate) for cate in cat_ord_enc.categories_]
+    # end of getting dataset
+    
+    ans = process_dataset(
+        DATASET_NAME=DATASET_NAME,
+        DATASET_TYPE=DATASET_TYPE,
+        N_CHANNELS=N_CHANNELS,
+        data_all=data_all,
+        data_all_cp=data_all_cp,
+        feature_df=feature_df,
+        label_df=label_df,
+        x_norm_type=x_norm_type,
+        col_names=col_names,
+        sst_columns=sst_columns,
+        d_num_x=d_num_x,
+        cat_columns=cat_columns,
+        num_columns=num_columns,
+        n_classes_lst=n_classes_lst,
+        sst_col_indices=sst_col_indices,
+        cat_ordinal_mapping=cat_ordinal_mapping,
+        cat_od_y_fn=cat_od_y_fn,
+        cat_ord_enc=cat_ord_enc,
+        label_ord_enc=label_ord_enc,
+        n_unq_y=n_unq_y,
+        n_unq_c_lst=n_unq_c_lst,
+        ratios=ratios,
+        seed=seed,
+        dir_path=dir_path,
+    )
+    return ans
+
+def save_bank_marketing(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
+    # constants for bank marketing dataset
+    pass
+
+def save_law_school(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
+    # constants for law school dataset
+    pass
