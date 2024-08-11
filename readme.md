@@ -36,7 +36,7 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 - [X] SMOTE
 - [X] STaSy
 - [X] TabDDPM
-- [] TabSyn
+- [X] TabSyn
 
 ## Contact
 

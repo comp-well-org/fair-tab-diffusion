@@ -868,10 +868,10 @@ def main():
     
     # data
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
-    data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     
     X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
     X_train_num, X_eval_num, X_test_num = X_num_sets

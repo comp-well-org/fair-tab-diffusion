@@ -47,11 +47,6 @@ class XYCTabDataModule:
             description = json.load(f)
         return description
     
-    def inverse_transform(self, xn, y):
-        # TODO: implement this
-        # read desc, cat_mapping, label_mapping, fn, and then inverse transform xn and y
-        pass
-    
     def get_dataloader(
         self, 
         flag: str,
