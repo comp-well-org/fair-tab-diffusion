@@ -144,8 +144,9 @@ def main():
     if args.train:
         # train
         train_config = config['train']
+        n_epochs = train_config['n_epochs']
         trainer = XYCTabTrainer(
-            n_epochs=train_config['n_epochs'],
+            n_epochs=n_epochs,
             lr=train_config['lr'],
             weight_decay=train_config['weight_decay'],
             max_non_improve=train_config['max_non_improve'],
@@ -156,7 +157,7 @@ def main():
         trainer.fit(diffusion, data_module, exp_dir)
         end_time = time.time()
         with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
-            time_msg = f'training time: {end_time - start_time:.2f} seconds'
+            time_msg = f'training time: {end_time - start_time:.2f} seconds with {n_epochs} epochs'
             f.write(time_msg)
     
     if args.sample:
