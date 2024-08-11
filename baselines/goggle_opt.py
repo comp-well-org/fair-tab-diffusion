@@ -6,7 +6,7 @@ import argparse
 import subprocess
 import sys
 
-# TODO: handling "Trial 4 failed with value None."
+# TODO: handling "Trial x failed with value None."
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -22,7 +22,7 @@ from constant import EXPS_PATH, ARGS_DIR
 
 warnings.filterwarnings('ignore')
 
-# TODO: change the method name
+# NOTE: change the method name
 METHOD = 'goggle'
 
 def main():
@@ -39,10 +39,8 @@ def main():
     )
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
-    method_str_py = ''.join(METHOD.split('-'))
-    
     def objective(trial):
-        # TODO: hyperparameters start here
+        # NOTE: hyperparameters start here
         lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
         n_epochs = trial.suggest_categorical('n_epochs', [2000, 3000, 4000])
         
@@ -57,7 +55,7 @@ def main():
         )
         os.makedirs(exp_dir, exist_ok=True)
         
-        # TODO: edit the config here
+        # NOTE: edit the config here
         base_config['train']['lr'] = lr
         base_config['train']['n_epochs'] = n_epochs
         
@@ -67,7 +65,7 @@ def main():
         subprocess.run(
             [
                 'python3.10',
-                f'{method_str_py}_run.py',
+                f'{METHOD}_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
@@ -77,7 +75,8 @@ def main():
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)
-        score = report['CatBoost'][0]
+        val_auc_list = report['CatBoost']['AUC']['Validation']
+        score = sum(val_auc_list) / len(val_auc_list)
         
         return score
     
@@ -95,7 +94,7 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            f'{method_str_py}_run.py',
+            f'{METHOD}_run.py',
             '--exp_name',
             'best',
             '--config',
