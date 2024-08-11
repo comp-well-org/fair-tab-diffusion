@@ -21,7 +21,6 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, zeros
 from torch_geometric.typing import Adj, OptTensor
 from torch_sparse import SparseTensor, masked_select_nnz
-from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -33,8 +32,8 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 # importing the required files from the parent directory
-from lib import load_config, copy_file
-from src.evaluate.skmodels import default_sk_clf
+from lib import load_config, copy_file, load_json
+from src.evaluate.metrics import evaluate_syn_data
 
 warnings.filterwarnings('ignore')
 
@@ -455,7 +454,7 @@ class Goggle(nn.Module):
     def sample(self, count):
         with torch.no_grad():
             mu = torch.zeros(self.input_dim)
-            sigma = torch.ones(self.input_dim)
+            sigma = torch.ones(self.input_dim) * 100
             q = torch.distributions.Normal(mu, sigma)
             z = q.rsample(sample_shape=torch.Size([count])).squeeze().to(self.device)
 
@@ -493,10 +492,10 @@ class GoggleLoss(nn.Module):
 
 class GoggleModel:
     def __init__(
-        self, ds_name, input_dim, encoder_dim=256, encoder_l=2,
-        het_encoding=True, decoder_dim=256, decoder_l=2, threshold=0.1,
+        self, ds_name, input_dim, encoder_dim=64, encoder_l=2,
+        het_encoding=True, decoder_dim=16, decoder_l=2, threshold=0.1,
         decoder_arch='gcn', graph_prior=None, prior_mask=None, device='cpu',
-        alpha=0.1, beta=0.1, seed=42, iter_opt=True,
+        alpha=0.1, beta=1.0, seed=42, iter_opt=True,
         **kwargs,
     ):
         self.ds_name = ds_name
@@ -653,6 +652,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
+    parser.add_argument('--train', action='store_true', help='training', default=True)
+    parser.add_argument('--sample', action='store_true', help='sampling', default=True)
+    parser.add_argument('--eval', action='store_true', help='evaluation', default=True)
     
     args = parser.parse_args()
     if args.config:
@@ -697,12 +699,12 @@ def main():
     
     # data
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
     norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
-    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
-        description = json.load(f)
+
     feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
     label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
     
@@ -726,97 +728,88 @@ def main():
     )
     
     num_params = sum(p.numel() for p in gen.model.encoder.parameters() if p.requires_grad)
-    print(f'number of parameters in encoder: {num_params}')
+    with open(os.path.join(exp_dir, 'params.txt'), 'w') as f:
+        f.write(f'number of parameters: {num_params}')
     
-    # training
-    start_time = time.time()
-    train_loader = DataLoader(X_train, batch_size=gen.batch_size, shuffle=True)
-    gen.fit(train_loader, f'{ckpt_dir}/model.pt')
-    end_time = time.time()
-    print(f'training time: {(end_time - start_time):.2f}s')
+    if args.train:
+        # train
+        start_time = time.time()
+        train_loader = DataLoader(X_train, batch_size=gen.batch_size, shuffle=True)
+        gen.fit(train_loader, f'{ckpt_dir}/model.pt')
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+            time_msg = f'training time: {end_time - start_time:.2f} seconds with {gen.epochs} epochs'
+            f.write(time_msg)
     
-    # sampling
-    gen.model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
-    start_time = time.time()
-    n_samples = X_train.shape[0]
-    print(f'n_samples: {n_samples}')
-    
-    for i in range(n_seeds):
-        random_seed = seed + i
-        torch.manual_seed(random_seed)
+    if args.sample:
+        # sampling
+        gen.model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
+        start_time = time.time()
+        n_samples = X_train.shape[0]
         
-        samples = []
-        for _ in range(n_samples // batch_size + 1):
-            sample = gen.sample(batch_size)
-            samples.append(sample)
-        samples = np.concatenate(samples, axis=0)
-        sample_con = samples[:, :d_numerical]
-        sample_dis = samples[:, d_numerical:]
-        sample_dis = onehot_to_categorical(sample_dis, categories)
-        sample = np.concatenate([sample_con, sample_dis], axis=1)
-        
-        xn_num = sample[:, :d_numerical]
-        x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
-        x_cat = sample[:, d_numerical: -1]
-        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
-        x_syn = np.concatenate([x_num, x_cat], axis=1)
-        y_syn = sample[:, -1]
-        
-        # to dataframe
-        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
-        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
-        y_syn = pd.DataFrame(y_syn, columns=label_cols)
-        
-        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-        if not os.path.exists(synth_dir):
-            os.makedirs(synth_dir)
-            
-        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
-        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
-        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
-        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
-
-    # copy `data_desc` as json file and `norm_fn` as skops file
-    synth_dir = os.path.join(exp_dir, 'synthesis')
-    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
-        json.dump(description, f, indent=4)
-    sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
-    
-    end_time = time.time()
-    print(f'sampling time: {(end_time - start_time):.2f}s')
-    
-    # evaluation
-    x_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-        index_col=0,
-    )
-    c_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-        index_col=0,
-    )
-    y_eval = c_eval.iloc[:, 0]
-    
-    # evaluate classifiers trained on synthetic data
-    metric = {}
-    for clf_choice in eval_config['sk_clf_choice']:
-        aucs = []
         for i in range(n_seeds):
             random_seed = seed + i
+            torch.manual_seed(random_seed)
+            
+            all_samples = []
+            for _ in range(n_samples // batch_size + 1):
+                samples_batch = gen.sample(batch_size)
+                all_samples.append(samples_batch)
+            all_samples = np.concatenate(all_samples, axis=0)
+            
+            all_samples_con = all_samples[:, :d_numerical]
+            all_samples_dis = all_samples[:, d_numerical:]
+            
+            all_samples_dis = onehot_to_categorical(all_samples_dis, categories)
+            all_samples = np.concatenate([all_samples_con, all_samples_dis], axis=1)
+            all_samples = all_samples[:n_samples]
+            
+            xn_num = all_samples[:, :d_numerical]
+            x_num = norm_fn.inverse_transform(all_samples[:, :d_numerical])
+            x_cat = all_samples[:, d_numerical: -1]
+            xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+            x_syn = np.concatenate([x_num, x_cat], axis=1)
+            y_syn = all_samples[:, -1]
+            
+            # to dataframe
+            xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+            x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+            y_syn = pd.DataFrame(y_syn, columns=label_cols)
+            
             synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-            
-            # read synthetic data
-            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-            y_syn = c_syn.iloc[:, 0]
-            
-            # train classifier
-            clf = default_sk_clf(clf_choice, random_seed)
-            clf.fit(x_syn, y_syn)
-            y_pred = clf.predict_proba(x_eval)[:, 1]
-            aucs.append(roc_auc_score(y_eval, y_pred))
-        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
-    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
-        json.dump(metric, f, indent=4)
+            if not os.path.exists(synth_dir):
+                os.makedirs(synth_dir)
+                
+            x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+            xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+            y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+            print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
+        
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
+            f.write(time_msg)
+    
+    if args.eval:
+        # evaluate classifiers trained on synthetic data
+        synth_dir_list = []
+        for i in range(n_seeds):
+            synth_dir = os.path.join(exp_dir, f'synthesis/{seed + i}')
+            if os.path.exists(synth_dir):
+                synth_dir_list.append(synth_dir)
 
+        sst_col_names = data_desc['sst_col_names']
+        metric = evaluate_syn_data(
+            data_dir=os.path.join(data_config['path'], data_config['name']),
+            exp_dir=exp_dir,
+            synth_dir_list=synth_dir_list,
+            sk_clf_lst=eval_config['sk_clf_choice'],
+            sens_cols=sst_col_names,
+        )
+        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+        with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+            json.dump(metric, f, indent=4)
+        print(json.dumps(metric, indent=4))
+        
 if __name__ == '__main__':
     main()

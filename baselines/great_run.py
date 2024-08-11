@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from torch.utils.data import DataLoader
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 from transformers import DataCollatorWithPadding, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
-from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -29,8 +28,8 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 # importing the required files from the parent directory
-from lib import load_config, copy_file
-from src.evaluate.skmodels import default_sk_clf
+from lib import load_config, copy_file, load_json
+from src.evaluate.metrics import evaluate_syn_data
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 warnings.filterwarnings('ignore')
@@ -426,6 +425,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
+    parser.add_argument('--train', action='store_true', help='training', default=True)
+    parser.add_argument('--sample', action='store_true', help='sampling', default=True)
+    parser.add_argument('--eval', action='store_true', help='evaluation', default=True)
     
     args = parser.parse_args()
     if args.config:

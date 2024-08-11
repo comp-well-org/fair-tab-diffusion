@@ -10,14 +10,14 @@ home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
 [model]
-encoder_dim = 512
-encoder_l = 4
-decoder_dim = 512
-decoder_l = 4
+encoder_dim = 64
+encoder_l = 2
+decoder_dim = 64
+decoder_l = 2
 
 [train]
-lr = 0.001
-n_epochs = 4000
+lr = 0.01
+n_epochs = 1000
 
 [sample]
 n_seeds = 3
