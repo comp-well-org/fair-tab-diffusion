@@ -1,18 +1,14 @@
 [data]
-name = "adult"
+name = "compass"
 path = "/rdf/db/public-tabular-datasets/"
 
 [exp]
-method = "fair-tab-gan"
-device = "cuda:1"
+method = "smote"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
-[train]
-batch_size = 256
-n_epochs = 200
-fair_epochs = 20
-lr = 0.0002
+[model]
+knn = 5
 
 [sample]
 n_seeds = 3

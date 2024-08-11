@@ -1,5 +1,5 @@
 [data]
-name = "adult"
+name = "german"
 path = "/rdf/db/public-tabular-datasets/"
 
 [exp]

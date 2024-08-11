@@ -1,0 +1,5 @@
+[fair]
+sensitive = "sex"
+underprivileged = "Female"
+label = "class"
+desirable = ">50K"

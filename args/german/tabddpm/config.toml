@@ -1,0 +1,37 @@
+[data]
+name = "german"
+path = "/rdf/db/public-tabular-datasets/"
+batch_size = 256
+
+[exp]
+method = "tabddpm"
+device = "cuda:1"
+home = "/rdf/experiments/fair-tab-diffusion-exps/"
+seed = 2024
+
+[model]
+dim_t = 128
+num_timesteps = 100
+
+[model.rtdl_params]
+d_layers = [
+    128,
+    128,
+    128,
+]
+dropout = 0.0
+
+[train]
+n_epochs = 1
+lr = 0.001
+weight_decay = 0.0001
+max_non_improve = 300
+is_fair = false
+
+[sample]
+n_seeds = 3
+
+[eval]
+sk_clf_choice = [
+    "CatBoost",
+]

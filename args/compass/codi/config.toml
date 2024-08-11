@@ -1,0 +1,46 @@
+[data]
+name = "compass"
+normalize = true
+path = "/rdf/db/public-tabular-datasets/"
+batch_size = 256
+
+[exp]
+method = "codi"
+device = "cuda:1"
+home = "/rdf/experiments/fair-tab-diffusion-exps/"
+seed = 2024
+
+[model]
+encoder_dim_con = [
+    256,
+    256,
+    256,
+]
+nf_con = 64
+lr_con = 1e-4
+beta_1 = 0.01
+beta_t = 0.20
+n_timesteps = 100
+encoder_dim_dis = [
+    256,
+    256,
+    256,
+]
+nf_dis = 64
+lr_dis = 1e-4
+
+[train]
+lambda_con = 1.0
+lambda_dis = 1.0 
+grad_clip = 1.0
+total_epochs_both = 1
+
+[sample]
+mean_type = 'epsilon'
+var_type = 'fixedlarge'
+n_seeds = 3
+
+[eval]
+sk_clf_choice = [
+    "CatBoost",
+]

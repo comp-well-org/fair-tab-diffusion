@@ -1,18 +1,23 @@
 [data]
-name = "adult"
+name = "law"
 path = "/rdf/db/public-tabular-datasets/"
+batch_size =  256
 
 [exp]
-method = "fair-tab-gan"
+method = "goggle"
 device = "cuda:1"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
+[model]
+encoder_dim = 512
+encoder_l = 4
+decoder_dim = 512
+decoder_l = 4
+
 [train]
-batch_size = 256
-n_epochs = 200
-fair_epochs = 20
-lr = 0.0002
+lr = 0.001
+n_epochs = 4000
 
 [sample]
 n_seeds = 3
