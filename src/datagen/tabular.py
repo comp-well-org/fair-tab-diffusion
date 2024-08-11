@@ -9,6 +9,9 @@ class TabDataDesc:
         n_channels: int,
         x_norm_type: str,
         col_names: list[str],
+        label_col_name: str,
+        num_col_names: list[str],
+        cat_col_names: list[str],
         sst_col_names: list[str],
         sst_col_indices: list[int],
         d_num_x: int,
@@ -30,6 +33,9 @@ class TabDataDesc:
             n_channels: number of channels.
             x_norm_type: type of x normalization.
             col_names: names of all columns.
+            label_col_name: name of the label column.
+            num_col_names: names of numerical columns.
+            cat_col_names: names of categorical columns.
             sst_col_names: names of sensitive columns.
             sst_col_indices: indices of sensitive columns.
             d_num_x: number of numerical features.
@@ -49,6 +55,9 @@ class TabDataDesc:
         self._desc['n_channels'] = n_channels
         self._desc['x_norm_type'] = x_norm_type
         self._desc['col_names'] = col_names
+        self._desc['label_col_name'] = label_col_name
+        self._desc['num_col_names'] = num_col_names
+        self._desc['cat_col_names'] = cat_col_names
         self._desc['sst_col_names'] = sst_col_names
         self._desc['sst_col_indices'] = sst_col_indices
         self._desc['d_num_x'] = d_num_x

@@ -191,10 +191,6 @@ def main():
     # data
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
     data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
-    ckpt_dir = os.path.join(exp_dir, 'ckpt')
-    if not os.path.exists(ckpt_dir):
-        os.makedirs(ckpt_dir)
-    
     x_train = pd.read_csv(f'{dataset_dir}/x_train.csv', index_col=0)
     y_train = pd.read_csv(f'{dataset_dir}/y_train.csv', index_col=0)
     label_col = y_train.columns.tolist()[0]
