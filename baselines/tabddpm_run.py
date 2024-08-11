@@ -14,7 +14,6 @@ from torch.utils.data import DataLoader, Dataset
 from typing import Callable, List, Type, Union
 from inspect import isfunction
 import skops.io as sio
-from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -26,7 +25,7 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 from lib import load_config, copy_file
-from src.evaluate.skmodels import default_sk_clf
+from src.evaluate.metrics import evaluate_syn_data
 
 warnings.filterwarnings('ignore')
 
@@ -1119,86 +1118,13 @@ class XYCTabTrainer:
 
 ################################################################################
 # main
-def test():
-    # global variables
-    device = torch.device('cuda:1')
-    
-    # TODO: configs
-    data_config = {
-        'path': '/rdf/db/public-tabular-datasets/',
-        'name': 'adult',
-        'batch_size': 128,
-    }
-    rtdl_params = {
-        'd_layers': [512, 512],
-        'dropout': 0.0,
-    }
-    dim_t = 128
-    train_config = {
-        'n_epochs': 2,
-        'lr': 1e-3,
-        'weight_decay': 1e-4,
-        'max_non_improve': 10,
-        'is_fair': False,
-    }
-    
-    # data
-    data_module = XYCTabDataModule(
-        root=os.path.join(data_config['path'], data_config['name']),
-        batch_size=data_config['batch_size'],
-    )
-    data_desc = data_module.get_data_description()
-    d_in = data_desc['d_oh_x']
-    n_unq_y = data_desc['n_unq_y']
-    n_unq_cat_od_x_lst = np.array(data_desc['n_unq_cat_od_x_lst'])
-    d_num_x = data_desc['d_num_x']
-    
-    # model
-    denoise_fn = MLPDenoiseFn(
-        d_in=d_in,
-        n_unq_y=n_unq_y,
-        is_y_cond=True,
-        rtdl_params=rtdl_params,
-        dim_t=dim_t,
-    )
-    
-    # diffusion
-    diffusion = GaussianMultinomialDiffusion(
-        num_classes=n_unq_cat_od_x_lst,
-        num_numerical_features=d_num_x,
-        denoise_fn=denoise_fn,
-        device='cuda:1',
-        scheduler='cosine',
-        max_beta=0.2,
-        num_timesteps=1000,
-        is_fair=train_config['is_fair'],
-        gaussian_parametrization='eps',
-    )
-    
-    # training
-    trainer = XYCTabTrainer(
-        n_epochs=train_config['n_epochs'],
-        lr=train_config['lr'],
-        weight_decay=train_config['weight_decay'],
-        max_non_improve=train_config['max_non_improve'],
-        is_fair=train_config['is_fair'],
-        device=device,
-    )
-    start_time = time.time()
-    trainer.fit(diffusion, data_module, 'ckpt')
-    end_time = time.time()
-    print(f'training time: {end_time - start_time:.2f} seconds')
-    
-    # sampling
-    print()
-    c_dist = data_module.get_empirical_dist()
-    xn, cond = diffusion.sample_all(1000, [c_dist[0]], batch_size=500)
-    print(f'synthetic data shape: {list(xn.shape)}, synthetic cond shape: {list(cond.shape)}')
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
+    parser.add_argument('--train', action='store_true', help='training', default=True)
+    parser.add_argument('--sample', action='store_true', help='sampling', default=True)
+    parser.add_argument('--eval', action='store_true', help='evaluation', default=True)
     
     args = parser.parse_args()
     if args.config:
@@ -1247,8 +1173,8 @@ def main():
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
     norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
     x_train = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0)
-    feature_cols = x_train.columns.tolist()
-    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+    feature_cols = data_desc['col_names']
+    label_cols = [data_desc['label_col_name']]
     
     # model
     denoise_fn = MLPDenoiseFn(
@@ -1272,82 +1198,79 @@ def main():
         gaussian_parametrization='eps',
     )
 
-    # training
-    trainer = XYCTabTrainer(
-        n_epochs=train_config['n_epochs'],
-        lr=train_config['lr'],
-        weight_decay=train_config['weight_decay'],
-        max_non_improve=train_config['max_non_improve'],
-        is_fair=train_config['is_fair'],
-        device=exp_config['device'],
-    )
-    start_time = time.time()
-    trainer.fit(diffusion, data_module, exp_dir)
-    end_time = time.time()
-    print(f'training time: {end_time - start_time:.2f} seconds')
+    if args.train:
+        # train
+        start_time = time.time()
+        n_epochs = train_config['n_epochs']
+        trainer = XYCTabTrainer(
+            n_epochs=n_epochs,
+            lr=train_config['lr'],
+            weight_decay=train_config['weight_decay'],
+            max_non_improve=train_config['max_non_improve'],
+            is_fair=train_config['is_fair'],
+            device=exp_config['device'],
+        )
+        trainer.fit(diffusion, data_module, exp_dir)
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+            time_msg = f'training time: {end_time - start_time:.2f} seconds with {n_epochs} epochs'
+            f.write(time_msg)
     
-    # sampling
-    start_time = time.time()
-    for i in range(n_seeds):
-        random_seed = seed + i
-        torch.manual_seed(random_seed)
-    
-        c_dist = data_module.get_empirical_dist()
-        xn, y_syn = diffusion.sample_all(len(x_train), [c_dist[0]], batch_size=1000)
-
-        xn_num = xn[:, :d_num_x]
-        x_num = norm_fn.inverse_transform(xn[:, :d_num_x])
-        x_cat = xn[:, d_num_x:]
-        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
-        x_syn = np.concatenate([x_num, x_cat], axis=1)
-        
-        # to dataframe
-        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
-        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
-        y_syn = pd.DataFrame(y_syn, columns=label_cols)
-        
-        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-        if not os.path.exists(synth_dir):
-            os.makedirs(synth_dir)
-            
-        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
-        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
-        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
-        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
-        print()
-
-    # evaluation
-    x_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-        index_col=0,
-    )
-    c_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-        index_col=0,
-    )
-    y_eval = c_eval.iloc[:, 0]
-    
-    # evaluate classifiers trained on synthetic data
-    metric = {}
-    for clf_choice in eval_config['sk_clf_choice']:
-        aucs = []
+    if args.sample:
+        # sampling
+        start_time = time.time()
         for i in range(n_seeds):
             random_seed = seed + i
-            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-            
-            # read synthetic data
-            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-            y_syn = c_syn.iloc[:, 0]
-            
-            # train classifier
-            clf = default_sk_clf(clf_choice, random_seed)
-            clf.fit(x_syn, y_syn)
-            y_pred = clf.predict_proba(x_eval)[:, 1]
-            aucs.append(roc_auc_score(y_eval, y_pred))
-        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
-    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
-        json.dump(metric, f, indent=4)
+            torch.manual_seed(random_seed)
+        
+            c_dist = data_module.get_empirical_dist()
+            xn, y_syn = diffusion.sample_all(len(x_train), [c_dist[0]], batch_size=1000)
 
+            xn_num = xn[:, :d_num_x]
+            x_num = norm_fn.inverse_transform(xn[:, :d_num_x])
+            x_cat = xn[:, d_num_x:]
+            xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+            x_syn = np.concatenate([x_num, x_cat], axis=1)
+            
+            # to dataframe
+            xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+            x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+            y_syn = pd.DataFrame(y_syn, columns=label_cols)
+            
+            synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            if not os.path.exists(synth_dir):
+                os.makedirs(synth_dir)
+                
+            x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+            xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+            y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+            print(f'seed: {random_seed}, xn_syn.shape: {xn_syn.shape}, y_syn.shape: {y_syn.shape}')
+            print()
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
+            f.write(time_msg)
+
+    if args.eval:
+        # evaluate classifiers trained on synthetic data
+        synth_dir_list = []
+        for i in range(n_seeds):
+            synth_dir = os.path.join(exp_dir, f'synthesis/{seed + i}')
+            if os.path.exists(synth_dir):
+                synth_dir_list.append(synth_dir)
+
+        sst_col_names = data_desc['sst_col_names']
+        metric = evaluate_syn_data(
+            data_dir=os.path.join(data_config['path'], data_config['name']),
+            exp_dir=exp_dir,
+            synth_dir_list=synth_dir_list,
+            sk_clf_lst=eval_config['sk_clf_choice'],
+            sens_cols=sst_col_names,
+        )
+        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+        with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+            json.dump(metric, f, indent=4)
+        print(json.dumps(metric, indent=4))
+        
 if __name__ == '__main__':
     main()

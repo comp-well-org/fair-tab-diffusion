@@ -26,6 +26,8 @@ pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+c
 
 ### Baselines
 
+The baseline methods we used in this project are as follows (sorted alphabetically):
+
 - [X] CoDi
 - [X] Fair SMOTE
 - [X] Fair Tabular GAN
@@ -33,7 +35,7 @@ pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+c
 - [X] Great
 - [X] SMOTE
 - [] STaSy
-- [] TabDDPM
+- [X] TabDDPM
 - [] TabSyn
 
 ## Contact
