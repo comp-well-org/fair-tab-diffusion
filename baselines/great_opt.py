@@ -5,6 +5,7 @@ import warnings
 import argparse
 import subprocess
 import sys
+import pandas as pd
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -22,6 +23,7 @@ warnings.filterwarnings('ignore')
 
 # NOTE: change the method name
 METHOD = 'great'
+REF_NUM = 4 * (10 ** 4)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -37,10 +39,18 @@ def main():
     )
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
+    epoch_list = [5, 10, 20]
+    config = lib.load_config(base_config_path)
+    data_dir = os.path.join(config['data']['path'], config['data']['name'])
+    train_data = pd.read_csv(os.path.join(data_dir, 'x_train.csv'))
+    train_size = train_data.shape[0]
+    scale_factor = REF_NUM / train_size
+    n_epochs_list = [int(epoch * scale_factor) for epoch in epoch_list]
+    
     def objective(trial):
         # NOTE: hyperparameters start here
         batch_size = trial.suggest_categorical('batch_size', [4, 8])
-        n_epochs = trial.suggest_categorical('n_epochs', [20, 50, 100, 200])
+        n_epochs = trial.suggest_categorical('n_epochs', n_epochs_list)
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
