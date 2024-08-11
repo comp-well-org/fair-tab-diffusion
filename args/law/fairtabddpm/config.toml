@@ -7,7 +7,7 @@ batch_size = 256
 [exp]
 method = "fairtabddpm"
 mode = "unet"
-device = "cuda"
+device = "cuda:0"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 fair = true
