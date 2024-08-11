@@ -20,12 +20,12 @@ from constant import EXPS_PATH, ARGS_DIR
 
 warnings.filterwarnings('ignore')
 
-METHOD = 'fair-smote'
+METHOD = 'fairsmote'
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='adult')
-    parser.add_argument('--n_trials', type=int, default=20)
+    parser.add_argument('--n_trials', type=int, default=10)
     args = parser.parse_args()
     dataset = args.dataset
     n_trials = args.n_trials
@@ -35,8 +35,6 @@ def main():
         sampler=optuna.samplers.TPESampler(seed=0),
     )
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
-    
-    method_str_py = ''.join(METHOD.split('-'))
     
     def objective(trial):        
         knn = trial.suggest_categorical('knn', [2, 21])
@@ -61,7 +59,7 @@ def main():
         subprocess.run(
             [
                 'python3.10',
-                f'{method_str_py}_run.py',
+                f'{METHOD}_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
@@ -71,7 +69,8 @@ def main():
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)
-        score = report['CatBoost'][0]
+        val_auc_list = report['CatBoost']['AUC']['Validation']
+        score = sum(val_auc_list) / len(val_auc_list)
         
         return score
     
@@ -89,7 +88,7 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            f'{method_str_py}_run.py',
+            f'{METHOD}_run.py',
             '--exp_name',
             'best',
             '--config',

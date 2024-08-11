@@ -5,7 +5,6 @@ import shutil
 import warnings
 import argparse
 import subprocess
-import numpy as np
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -26,7 +25,7 @@ METHOD = 'codi'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='adult')
-    parser.add_argument('--n_trials', type=int, default=20)
+    parser.add_argument('--n_trials', type=int, default=10)
     args = parser.parse_args()
     dataset = args.dataset
     n_trials = args.n_trials
@@ -71,7 +70,8 @@ def main():
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)
-        score = np.mean(report['CatBoost']['AUC']['Train'])
+        val_auc_list = report['CatBoost']['AUC']['Validation']
+        score = sum(val_auc_list) / len(val_auc_list)
         
         return score
     

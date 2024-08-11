@@ -14,6 +14,22 @@ pip install dgl -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
 pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
 ```
 
+## Benchmarks
+
+### Datasets
+
+- Adult
+- COMPASS
+- Bank Marketing
+- Law School Admissions
+
+NOTE: German dataset is only used for testing the code but not presented in the paper.
+
+### Models
+
+- [x] CoDi
+- [X] Fair Smote
+
 ## Contact
 
 - Zeyu Yang

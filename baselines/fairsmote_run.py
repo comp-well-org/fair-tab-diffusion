@@ -11,7 +11,6 @@ from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import silhouette_score, silhouette_samples
 from imblearn.over_sampling import SMOTENC
-from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -22,8 +21,8 @@ parent = os.path.dirname(current)
 # adding the parent directory to the sys.path
 sys.path.append(parent)
 
-from lib import load_config, copy_file
-from src.evaluate.skmodels import default_sk_clf
+from lib import load_config, copy_file, load_json
+from src.evaluate.metrics import evaluate_syn_data
 
 warnings.filterwarnings('ignore')
 
@@ -152,6 +151,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
+    parser.add_argument('--train', action='store_true', help='training', default=True)
+    parser.add_argument('--sample', action='store_true', help='sampling', default=True)
+    parser.add_argument('--eval', action='store_true', help='evaluation', default=True)
     
     args = parser.parse_args()
     if args.config:
@@ -188,98 +190,83 @@ def main():
     
     # data
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
     
     x_train = pd.read_csv(f'{dataset_dir}/x_train.csv', index_col=0)
-    x_eval = pd.read_csv(f'{dataset_dir}/x_eval.csv', index_col=0)
-
     y_train = pd.read_csv(f'{dataset_dir}/y_train.csv', index_col=0)
-    y_eval = pd.read_csv(f'{dataset_dir}/y_eval.csv', index_col=0)
-    
     label_col = y_train.columns.tolist()[0]
-    
     y_train = y_train[[label_col]]
-    y_eval = y_eval[[label_col]]
     
-    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
-        description = json.load(f)
     data_train = pd.concat([x_train, y_train], axis=1)
     feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
-    d_num_x = description['d_num_x']
+    d_num_x = data_desc['d_num_x']
     x_num_cols = feature_cols[:d_num_x]
-    sst_col_names = description['sst_col_names']
+    sst_col_names = data_desc['sst_col_names']
 
     drop_features = []
     features = list(set(data_train.keys().tolist()) - set(drop_features + [label_col]))
 
     # model
-    start_time = time.time()
     fcb = FairBalance(
         data_train, features, 
         x_num_cols, drop_features,
         sst_col_names, label_col, knn=knn,
     )
-    fcb.fit()
-    end_time = time.time()
-    print(f'training time: {end_time - start_time:.2f}s')
+    
+    if args.train:
+        # train
+        start_time = time.time()
+        fcb.fit()
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+            time_msg = f'training time: {end_time - start_time:.2f} seconds'
+            f.write(time_msg)
 
-    # sampling
-    start_time = time.time()
-    for i in range(n_seeds):
-        random_seed = seed + i
-
-        x_syn_balanced, y_syn_balanced = fcb.generater(seed=random_seed)
-        # reordering the columns of the balanced dataset
-        x_syn_balanced = x_syn_balanced[feature_cols]
-        
-        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-        if not os.path.exists(synth_dir):
-            os.makedirs(synth_dir)
-        
-        x_syn_balanced.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
-        y_syn_balanced.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
-        print(f'seed: {random_seed}, x_syn: {x_syn_balanced.shape}, y_syn: {y_syn_balanced.shape}')
-    end_time = time.time()
-    print(f'sampling time: {end_time - start_time:.2f}s')
-    
-    synth_dir = os.path.join(exp_dir, 'synthesis')
-    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
-        json.dump(description, f, indent=4)
-    
-    # evaluation
-    x_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-        index_col=0,
-    )
-    c_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-        index_col=0,
-    )
-    y_eval = c_eval.iloc[:, 0]
-    
-    # evaluate classifiers trained on synthetic data
-    metric = {}
-    for clf_choice in eval_config['sk_clf_choice']:
-        aucs = []
+    if args.sample:
+        # sampling
+        start_time = time.time()
         for i in range(n_seeds):
             random_seed = seed + i
+
+            x_syn_balanced, y_syn_balanced = fcb.generater(seed=random_seed)
+            # reordering the columns of the balanced dataset
+            x_syn_balanced = x_syn_balanced[feature_cols]
+            
             synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            if not os.path.exists(synth_dir):
+                os.makedirs(synth_dir)
             
-            # read synthetic data
-            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-            y_syn = c_syn.iloc[:, 0]
+            x_syn_balanced.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+            y_syn_balanced.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+            print(f'seed: {random_seed}, x_syn: {x_syn_balanced.shape}, y_syn: {y_syn_balanced.shape}')
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
+            f.write(time_msg)
             
-            # train classifier
-            clf = default_sk_clf(clf_choice, random_seed)
-            clf.fit(x_syn, y_syn)
-            y_pred = clf.predict_proba(x_eval)[:, 1]
-            aucs.append(roc_auc_score(y_eval, y_pred))
-        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
-    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
-        json.dump(metric, f, indent=4)
+    if args.eval:
+        # evaluate classifiers trained on synthetic data
+        synth_dir_list = []
+        for i in range(n_seeds):
+            synth_dir = os.path.join(exp_dir, f'synthesis/{seed + i}')
+            if os.path.exists(synth_dir):
+                synth_dir_list.append(synth_dir)
+
+        sst_col_names = data_desc['sst_col_names']
+        metric = evaluate_syn_data(
+            data_dir=os.path.join(data_config['path'], data_config['name']),
+            exp_dir=exp_dir,
+            synth_dir_list=synth_dir_list,
+            sk_clf_lst=eval_config['sk_clf_choice'],
+            sens_cols=sst_col_names,
+        )
+        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+        with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+            json.dump(metric, f, indent=4)
+        print(json.dumps(metric, indent=4))
 
 if __name__ == '__main__':
     main()

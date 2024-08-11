@@ -26,7 +26,7 @@ METHOD = 'stasy'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='adult')
-    parser.add_argument('--n_trials', type=int, default=20)
+    parser.add_argument('--n_trials', type=int, default=10)
     args = parser.parse_args()
     dataset = args.dataset
     n_trials = args.n_trials
