@@ -20,10 +20,9 @@ pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+c
 
 - Adult
 - COMPASS
+- German Credit
 - Bank Marketing
 - Law School Admissions
-
-NOTE: German dataset is only used for testing the code but not presented in the paper.
 
 ### Baselines
 
