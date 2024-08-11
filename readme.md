@@ -31,10 +31,10 @@ pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+c
 - [X] Fair Tabular GAN
 - [X] Goggle
 - [X] Great
-- [X] SMOTE
-- [ ] STaSy
-- [ ] TabDDPM
-- [ ] TabSyn
+- [] SMOTE
+- [] STaSy
+- [] TabDDPM
+- [] TabSyn
 
 ## Contact
 
