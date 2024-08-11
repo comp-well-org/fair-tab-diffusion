@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import lib
 from constant import EXPS_PATH
+import numpy as np
 
 warnings.filterwarnings('ignore')
 
@@ -21,7 +22,7 @@ def main():
         direction='maximize',
         sampler=optuna.samplers.TPESampler(seed=0),
     )
-    base_config_path = f'./args/{dataset}/fair-tab-ddpm/config.toml'
+    base_config_path = f'./args/{dataset}/fairtabddpm/config.toml'
     
     def objective(trial):        
         lr = trial.suggest_float('lr', 0.00001, 0.003, log=True)
@@ -59,7 +60,7 @@ def main():
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)
-        score = report['CatBoost'][0]
+        score = np.mean(report['CatBoost']['AUC']['Train'])
         
         return score
     
@@ -82,10 +83,6 @@ def main():
             'best',
             '--config',
             f'{best_config_path}',
-            '--train',
-            '--sample',
-            '--eval',
-            '--override',
         ],
         check=True,
     )
@@ -93,7 +90,7 @@ def main():
         os.path.join(
             EXPS_PATH,
             dataset,
-            'fair-tab-ddpm',
+            'fairtabddpm',
             'many-exps',
         ),
     )

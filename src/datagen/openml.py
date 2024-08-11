@@ -10,7 +10,7 @@ from typing import Dict
 from .tabular import TabDataDesc, norm_tab_x_df
 
 UCI_ADULT_ID = 1590
-COMPASS_ID = 44053  # TODO
+COMPASS_ID = 44053
 UCI_GERMAN_CREDIT_ID = 46116
 BANK_MARKETING_ID = 44234
 LAW_SCHOOL_ID = 43890
@@ -225,7 +225,7 @@ def save_openml_dataset(name: str, x_norm_type='quantile', ratios=(0.5, 0.5), se
                 'score_text', 'v_type_of_assessment', 'v_decile_score', 'v_score_text',
             ],
             'sst_columns':  ['sex', 'race'],
-        }
+        },
     }
     data_ref_dict = dataset_mapping[name]
     
