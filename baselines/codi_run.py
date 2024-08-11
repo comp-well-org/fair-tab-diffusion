@@ -925,6 +925,7 @@ def main():
         with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
             time_msg = f'training time: {end_time - start_time:.2f} seconds with {total_epochs_both} epochs'
             f.write(time_msg)
+        print()
             
     if args.sample:
         # sampling
@@ -968,6 +969,7 @@ def main():
         with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
             time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
             f.write(time_msg)
+        print
 
     if args.eval:
         # evaluate classifiers trained on synthetic data
