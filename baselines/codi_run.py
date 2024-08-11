@@ -12,7 +12,6 @@ import torch.nn as nn
 import skops.io as sio
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -24,8 +23,8 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 # importing the required files from the parent directory
-from lib import load_config, copy_file
-from src.evaluate.skmodels import default_sk_clf
+from lib import load_config, copy_file, load_json
+from src.evaluate.metrics import evaluate_syn_data
 
 warnings.filterwarnings('ignore')
 
@@ -808,7 +807,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
-
+    parser.add_argument('--train', action='store_true', help='training', default=True)
+    parser.add_argument('--sample', action='store_true', help='sampling', default=True)
+    parser.add_argument('--eval', action='store_true', help='evaluation', default=True)
+    
     args = parser.parse_args()
     if args.config:
         config = load_config(args.config)
@@ -869,6 +871,7 @@ def main():
     ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
+    data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     
     X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
     X_train_num, X_eval_num, X_test_num = X_num_sets
@@ -877,8 +880,6 @@ def main():
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
     categories = np.array(categories)
     norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
-    with open(os.path.join(dataset_dir, 'desc.json'), 'r') as f:
-        description = json.load(f)
     feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
     label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
     
@@ -905,103 +906,89 @@ def main():
 
     num_params_con = sum(p.numel() for p in model_con.parameters())
     num_params_dis = sum(p.numel() for p in model_dis.parameters())
-    print_it = False
-    if print_it:
-        print('continuous model params: %d' % (num_params_con))
-        print('discrete model params: %d' % (num_params_dis))
+    num_params = num_params_con + num_params_dis
+    with open(os.path.join(exp_dir, 'params.txt'), 'w') as f:
+        f.write(f'number of parameters: {num_params}')
 
-    # training
-    start_time = time.time()
-    train_codi_model(
-        X_train_num, X_train_cat, categories,
-        model_con, model_dis, trainer_con, trainer_dis,
-        optim_con, optim_dis, sched_con, sched_dis, 
-        lambda_con, lambda_dis, grad_clip, n_timesteps,
-        total_epochs_both, batch_size, 
-        device, ckpt_dir,
-    )
-    end_time = time.time()
-    print(f'training time: {end_time-start_time:.3f}s')
-    
-    # sampling
-    net_sampler = GaussianDiffusionSampler(
-        model_con, beta_1, beta_t, n_timesteps, mean_type, var_type,
-    ).to(device)
-    
-    # sampling with seeds
-    start_time = time.time()
-    for i in range(n_seeds):
-        random_seed = seed + i
-        torch.manual_seed(random_seed)
-        sample = sampling_synthetic_data(
-            model_con, model_dis, trainer_dis, ckpt_dir, 
-            X_train_num, X_train_cat,
-            categories, net_sampler, n_timesteps,
-            device,
+    if args.train:
+        # train
+        start_time = time.time()
+        train_codi_model(
+            X_train_num, X_train_cat, categories,
+            model_con, model_dis, trainer_con, trainer_dis,
+            optim_con, optim_dis, sched_con, sched_dis, 
+            lambda_con, lambda_dis, grad_clip, n_timesteps,
+            total_epochs_both, batch_size, 
+            device, ckpt_dir,
         )
-        # xn + xd + y -> [x + xd] + y
-        xn_num = sample[:, :d_numerical]
-        x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
-        x_cat = sample[:, d_numerical: -1]
-        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
-        x_syn = np.concatenate([x_num, x_cat], axis=1)
-        y_syn = sample[:, -1]
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+            time_msg = f'training time: {end_time - start_time:.2f} seconds with {total_epochs_both} epochs'
+            f.write(time_msg)
+            
+    if args.sample:
+        # sampling
+        net_sampler = GaussianDiffusionSampler(
+            model_con, beta_1, beta_t, n_timesteps, mean_type, var_type,
+        ).to(device)
         
-        # to dataframe
-        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
-        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
-        y_syn = pd.DataFrame(y_syn, columns=label_cols)
-
-        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-        if not os.path.exists(synth_dir):
-            os.makedirs(synth_dir)
-        
-        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
-        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
-        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
-        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
-        
-    # copy `data_desc` as json file and `norm_fn` as skops file
-    synth_dir = os.path.join(exp_dir, 'synthesis')
-    with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
-        json.dump(description, f, indent=4)
-    sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
-    
-    end_time = time.time()
-    print(f'sampling time: {end_time-start_time:.3f}s')
-
-    # evaluation
-    x_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-        index_col=0,
-    )
-    c_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-        index_col=0,
-    )
-    y_eval = c_eval.iloc[:, 0]
-    
-    # evaluate classifiers trained on synthetic data
-    metric = {}
-    for clf_choice in eval_config['sk_clf_choice']:
-        aucs = []
+        start_time = time.time()
         for i in range(n_seeds):
             random_seed = seed + i
+            torch.manual_seed(random_seed)
+            sample = sampling_synthetic_data(
+                model_con, model_dis, trainer_dis, ckpt_dir, 
+                X_train_num, X_train_cat,
+                categories, net_sampler, n_timesteps,
+                device,
+            )
+            # xn + xd + y -> [x + xd] + y
+            xn_num = sample[:, :d_numerical]
+            x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
+            x_cat = sample[:, d_numerical: -1]
+            xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+            x_syn = np.concatenate([x_num, x_cat], axis=1)
+            y_syn = sample[:, -1]
+            
+            # to dataframe
+            xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+            x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+            y_syn = pd.DataFrame(y_syn, columns=label_cols)
+
             synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            if not os.path.exists(synth_dir):
+                os.makedirs(synth_dir)
             
-            # read synthetic data
-            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-            y_syn = c_syn.iloc[:, 0]
-            
-            # train classifier
-            clf = default_sk_clf(clf_choice, random_seed)
-            clf.fit(x_syn, y_syn)
-            y_pred = clf.predict_proba(x_eval)[:, 1]
-            aucs.append(roc_auc_score(y_eval, y_pred))
-        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
-    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
-        json.dump(metric, f, indent=4)
+            x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+            xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+            y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+            print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
+        
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
+            f.write(time_msg)
+
+    if args.eval:
+        # evaluate classifiers trained on synthetic data
+        synth_dir_list = []
+        for i in range(n_seeds):
+            synth_dir = os.path.join(exp_dir, f'synthesis/{seed + i}')
+            if os.path.exists(synth_dir):
+                synth_dir_list.append(synth_dir)
+
+        sst_col_names = data_desc['sst_col_names']
+        metric = evaluate_syn_data(
+            data_dir=os.path.join(data_config['path'], data_config['name']),
+            exp_dir=exp_dir,
+            synth_dir_list=synth_dir_list,
+            sk_clf_lst=eval_config['sk_clf_choice'],
+            sens_cols=sst_col_names,
+        )
+        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+        with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+            json.dump(metric, f, indent=4)
+        print(json.dumps(metric, indent=4))
 
 if __name__ == '__main__':
     main()

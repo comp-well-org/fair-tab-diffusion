@@ -227,7 +227,6 @@ def main():
             sk_clf_lst=eval_config['sk_clf_choice'],
             sens_cols=sst_col_names,
         )
-        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
         with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
             json.dump(metric, f, indent=4)
         print(json.dumps(metric, indent=4))

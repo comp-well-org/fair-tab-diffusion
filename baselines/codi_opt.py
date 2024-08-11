@@ -1,10 +1,11 @@
 import os
+import sys
 import optuna
 import shutil
 import warnings
 import argparse
 import subprocess
-import sys
+import numpy as np
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -36,8 +37,6 @@ def main():
     )
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
-    method_str_py = ''.join(METHOD.split('-'))
-    
     def objective(trial):        
         total_epochs_both = trial.suggest_categorical('total_epochs_both', [100, 500, 1000])
         n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
@@ -62,7 +61,7 @@ def main():
         subprocess.run(
             [
                 'python3.10',
-                f'{method_str_py}_run.py',
+                f'{METHOD}_run.py',
                 '--config',
                 f'{exp_dir}/config.toml',
                 '--exp_name',
@@ -72,7 +71,7 @@ def main():
         )
         report_path = f'{exp_dir}/metric.json'
         report = lib.load_json(report_path)
-        score = report['CatBoost'][0]
+        score = np.mean(report['CatBoost']['AUC']['Train'])
         
         return score
     
@@ -90,7 +89,7 @@ def main():
     subprocess.run(
         [
             'python3.10',
-            f'{method_str_py}_run.py',
+            f'{METHOD}_run.py',
             '--exp_name',
             'best',
             '--config',
