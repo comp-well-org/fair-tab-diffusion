@@ -34,7 +34,7 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 - [X] Goggle
 - [X] Great
 - [X] SMOTE
-- [] STaSy
+- [X] STaSy
 - [X] TabDDPM
 - [] TabSyn
 

@@ -8,7 +8,7 @@ home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
 [train]
-n_epochs = 1
+n_epochs = 5
 lr = 0.001
 
 [sample]

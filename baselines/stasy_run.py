@@ -18,7 +18,6 @@ import torch.optim as optim
 import ml_collections as mlc
 from scipy import integrate
 from torch.utils.data import DataLoader
-from sklearn.metrics import roc_auc_score
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -30,8 +29,8 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 # importing the required files from the parent directory
-from lib import load_config, copy_file
-from src.evaluate.skmodels import default_sk_clf
+from lib import load_config, copy_file, load_json
+from src.evaluate.metrics import evaluate_syn_data
 
 warnings.filterwarnings('ignore')
 
@@ -1317,6 +1316,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='config file')
     parser.add_argument('--exp_name', type=str, default='check')
+    parser.add_argument('--train', action='store_true', help='training', default=True)
+    parser.add_argument('--sample', action='store_true', help='sampling', default=True)
+    parser.add_argument('--eval', action='store_true', help='evaluation', default=True)
     
     args = parser.parse_args()
     if args.config:
@@ -1355,12 +1357,13 @@ def main():
     
     # data
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
+    data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     ckpt_dir = os.path.join(exp_dir, 'ckpt')
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
     norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
-    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
-    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+    feature_cols = data_desc['col_names']
+    label_cols = [data_desc['label_col_name']]
     
     X_num_sets, X_cat_sets, categories, d_numerical = preprocess(dataset_dir)
     X_train_num, X_eval_num, X_test_num = X_num_sets
@@ -1379,136 +1382,134 @@ def main():
     # model
     score_model = create_model(config)
     num_params = sum(p.numel() for p in score_model.parameters())
-    print(f'number of parameters: {num_params}')
+    with open(os.path.join(exp_dir, 'params.txt'), 'w') as f:
+        f.write(f'number of parameters: {num_params}')
     
-    # training
-    ema = ExponentialMovingAverage(score_model.parameters(), decay=config.model.ema_rate)
-    
-    optimizer = get_optimizer(config, score_model.parameters())
-    state = dict(optimizer=optimizer, model=score_model, ema=ema, step=0, epoch=0)
-
-    initial_step = int(state['epoch'])
-    train_data = train_z
-    train_iter = DataLoader(train_data, batch_size=config.training.batch_size, shuffle=True, num_workers=4)
-    
-    # set up sdes
-    if config.training.sde.lower() == 'vpsde':
-        sde = VPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
-    elif config.training.sde.lower() == 'subvpsde':
-        sde = SubVPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
-    elif config.training.sde.lower() == 'vesde':
-        sde = VESDE(sigma_min=config.model.sigma_min, sigma_max=config.model.sigma_max, N=config.model.num_scales)
-    else:
-        raise NotImplementedError(f'SDE {config.training.sde} unknown')
-    
-    optimize_fn = optimization_manager(config)
-    continuous = config.training.continuous
-    reduce_mean = config.training.reduce_mean
-    likelihood_weighting = config.training.likelihood_weighting
-    
-    train_step_fn = get_step_fn(
-        sde, train=True, optimize_fn=optimize_fn,
-        reduce_mean=reduce_mean, continuous=continuous,
-        likelihood_weighting=likelihood_weighting, workdir=ckpt_dir, spl=config.training.spl, 
-        alpha0=config.model.alpha0, beta0=config.model.beta0,
-    )
-
-    start_time = time.time()
-    best_loss = np.inf
-    for epoch in range(initial_step, config.training.epoch):
-        state['epoch'] += 1
-
-        batch_loss = 0
-        batch_num = 0
-        epoch_loss = 0
-        for idx, batch in enumerate(train_iter): 
-            batch = batch.to(config.device).float()
-            num_sample = batch.shape[0]
-            batch_num += num_sample
-            loss = train_step_fn(state, batch)
-            batch_loss += loss.item() * num_sample
-            epoch_loss = batch_loss / batch_num
-
-            if epoch == config.training.epoch - 1 and idx == len(train_iter) - 1:
-                print(f'training -> epoch: {epoch + 1}/{config.training.epoch}, loss: {epoch_loss:.4f} -- best: {best_loss:.4f}')
-            else:
-                print(f'training -> epoch: {epoch + 1}/{config.training.epoch}, loss: {epoch_loss:.4f} -- best: {best_loss:.4f}', end='\r')
+    if args.train:
+        # train
+        ema = ExponentialMovingAverage(score_model.parameters(), decay=config.model.ema_rate)
         
-        batch_loss /= batch_num
-        if batch_loss < best_loss:
-            best_loss = batch_loss
-            save_checkpoint(os.path.join(ckpt_dir, 'model.pth'), state)
+        optimizer = get_optimizer(config, score_model.parameters())
+        state = dict(optimizer=optimizer, model=score_model, ema=ema, step=0, epoch=0)
+
+        initial_step = int(state['epoch'])
+        train_data = train_z
+        train_iter = DataLoader(train_data, batch_size=config.training.batch_size, shuffle=True, num_workers=4)
+        
+        # set up sdes
+        if config.training.sde.lower() == 'vpsde':
+            sde = VPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
+        elif config.training.sde.lower() == 'subvpsde':
+            sde = SubVPSDE(beta_min=config.model.beta_min, beta_max=config.model.beta_max, N=config.model.num_scales)
+        elif config.training.sde.lower() == 'vesde':
+            sde = VESDE(sigma_min=config.model.sigma_min, sigma_max=config.model.sigma_max, N=config.model.num_scales)
+        else:
+            raise NotImplementedError(f'SDE {config.training.sde} unknown')
+        
+        optimize_fn = optimization_manager(config)
+        continuous = config.training.continuous
+        reduce_mean = config.training.reduce_mean
+        likelihood_weighting = config.training.likelihood_weighting
+        
+        train_step_fn = get_step_fn(
+            sde, train=True, optimize_fn=optimize_fn,
+            reduce_mean=reduce_mean, continuous=continuous,
+            likelihood_weighting=likelihood_weighting, workdir=ckpt_dir, spl=config.training.spl, 
+            alpha0=config.model.alpha0, beta0=config.model.beta0,
+        )
+
+        start_time = time.time()
+        best_loss = np.inf
+        for epoch in range(initial_step, config.training.epoch):
+            state['epoch'] += 1
+
+            batch_loss = 0
+            batch_num = 0
+            epoch_loss = 0
+            for idx, batch in enumerate(train_iter): 
+                batch = batch.to(config.device).float()
+                num_sample = batch.shape[0]
+                batch_num += num_sample
+                loss = train_step_fn(state, batch)
+                batch_loss += loss.item() * num_sample
+                epoch_loss = batch_loss / batch_num
+
+                if epoch == config.training.epoch - 1 and idx == len(train_iter) - 1:
+                    print(f'training -> epoch: {epoch + 1}/{config.training.epoch}, loss: {epoch_loss:.4f} -- best: {best_loss:.4f}')
+                else:
+                    print(f'training -> epoch: {epoch + 1}/{config.training.epoch}, loss: {epoch_loss:.4f} -- best: {best_loss:.4f}', end='\r')
             
-    end_time = time.time()
-    print(f'training time: {(end_time - start_time):.2f}s')
-    
-    # sampling
-    start_time = time.time()
-    n_samples = train_z.shape[0]
-    for i in range(n_seeds):
-        random_seed = seed + i
-        torch.manual_seed(random_seed)
-        state = restore_checkpoint(os.path.join(ckpt_dir, 'model.pth'), state, config.device)
-        sampling_fn = get_sampling_fn(config, sde, shape=train_z.shape, eps=1e-3)
-        samples, n = sampling_fn(score_model, sampling_shape=(n_samples, train_z.shape[1]))
-        syn_data_num = samples[:, :d_numerical].detach().cpu().numpy()
-        syn_data_cat = samples[:, d_numerical:].detach().cpu().numpy()
-        syn_data_cat = onehot_argmax_categorical(syn_data_cat, categories)
-        sample = np.concatenate((syn_data_num, syn_data_cat), axis=1)
+            batch_loss /= batch_num
+            if batch_loss < best_loss:
+                best_loss = batch_loss
+                save_checkpoint(os.path.join(ckpt_dir, 'model.pth'), state)
+                
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+            time_msg = f'training time: {end_time - start_time:.2f} seconds with {config.training.epoch} epochs'
+            f.write(time_msg)
         
-        xn_num = sample[:, :d_numerical]
-        x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
-        x_cat = sample[:, d_numerical: -1]
-        xn_syn = np.concatenate([xn_num, x_cat], axis=1)
-        x_syn = np.concatenate([x_num, x_cat], axis=1)
-        y_syn = sample[:, -1]
-        
-        # to dataframe
-        xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
-        x_syn = pd.DataFrame(x_syn, columns=feature_cols)
-        y_syn = pd.DataFrame(y_syn, columns=label_cols)
-        
-        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-        if not os.path.exists(synth_dir):
-            os.makedirs(synth_dir)
-            
-        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
-        xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
-        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
-        print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
-    
-    # evaluation
-    x_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-        index_col=0,
-    )
-    c_eval = pd.read_csv(
-        os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-        index_col=0,
-    )
-    y_eval = c_eval.iloc[:, 0]
-    
-    # evaluate classifiers trained on synthetic data
-    metric = {}
-    for clf_choice in eval_config['sk_clf_choice']:
-        aucs = []
+    if args.sample:
+        # sampling
+        start_time = time.time()
+        n_samples = train_z.shape[0]
         for i in range(n_seeds):
             random_seed = seed + i
+            torch.manual_seed(random_seed)
+            state = restore_checkpoint(os.path.join(ckpt_dir, 'model.pth'), state, config.device)
+            sampling_fn = get_sampling_fn(config, sde, shape=train_z.shape, eps=1e-3)
+            samples, n = sampling_fn(score_model, sampling_shape=(n_samples, train_z.shape[1]))
+            syn_data_num = samples[:, :d_numerical].detach().cpu().numpy()
+            syn_data_cat = samples[:, d_numerical:].detach().cpu().numpy()
+            syn_data_cat = onehot_argmax_categorical(syn_data_cat, categories)
+            sample = np.concatenate((syn_data_num, syn_data_cat), axis=1)
+            
+            xn_num = sample[:, :d_numerical]
+            x_num = norm_fn.inverse_transform(sample[:, :d_numerical])
+            x_cat = sample[:, d_numerical: -1]
+            xn_syn = np.concatenate([xn_num, x_cat], axis=1)
+            x_syn = np.concatenate([x_num, x_cat], axis=1)
+            y_syn = sample[:, -1]
+            
+            # to dataframe
+            xn_syn = pd.DataFrame(xn_syn, columns=feature_cols)
+            x_syn = pd.DataFrame(x_syn, columns=feature_cols)
+            y_syn = pd.DataFrame(y_syn, columns=label_cols)
+            
             synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+            if not os.path.exists(synth_dir):
+                os.makedirs(synth_dir)
+                
+            x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
+            xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
+            y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
+            print(f'seed: {random_seed}, xn_syn: {xn_syn.shape}, y_syn: {y_syn.shape}')
             
-            # read synthetic data
-            x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-            c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-            y_syn = c_syn.iloc[:, 0]
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
+            f.write(time_msg)
             
-            # train classifier
-            clf = default_sk_clf(clf_choice, random_seed)
-            clf.fit(x_syn, y_syn)
-            y_pred = clf.predict_proba(x_eval)[:, 1]
-            aucs.append(roc_auc_score(y_eval, y_pred))
-        metric[clf_choice] = (np.mean(aucs), np.std(aucs))
-    with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
-        json.dump(metric, f, indent=4)
+    if args.eval:
+        # evaluate classifiers trained on synthetic data
+        synth_dir_list = []
+        for i in range(n_seeds):
+            synth_dir = os.path.join(exp_dir, f'synthesis/{seed + i}')
+            if os.path.exists(synth_dir):
+                synth_dir_list.append(synth_dir)
+
+        sst_col_names = data_desc['sst_col_names']
+        metric = evaluate_syn_data(
+            data_dir=os.path.join(data_config['path'], data_config['name']),
+            exp_dir=exp_dir,
+            synth_dir_list=synth_dir_list,
+            sk_clf_lst=eval_config['sk_clf_choice'],
+            sens_cols=sst_col_names,
+        )
+        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+        with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
+            json.dump(metric, f, indent=4)
+        print(json.dumps(metric, indent=4))
         
 if __name__ == '__main__':
     main()
