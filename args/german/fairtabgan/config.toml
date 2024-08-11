@@ -1,9 +1,9 @@
 [data]
-name = "bank"
+name = "german"
 path = "/rdf/db/public-tabular-datasets/"
 
 [exp]
-method = "fair-tab-gan"
+method = "fairtabgan"
 device = "cuda:1"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024

@@ -1,14 +1,18 @@
 [data]
-name = "law"
+name = "bank"
 path = "/rdf/db/public-tabular-datasets/"
 
 [exp]
-method = "fair-smote"
+method = "fairtabgan"
+device = "cuda:1"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 
-[model]
-knn = 5
+[train]
+batch_size = 256
+n_epochs = 200
+fair_epochs = 20
+lr = 0.0002
 
 [sample]
 n_seeds = 3

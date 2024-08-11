@@ -1,11 +1,11 @@
 [data]
-name = "adult"
+name = "bank"
 normalize = true
 path = "/rdf/db/public-tabular-datasets/"
 batch_size = 256
 
 [exp]
-method = "fair-tab-ddpm"
+method = "fairtabddpm"
 mode = "unet"
 device = "cuda"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"

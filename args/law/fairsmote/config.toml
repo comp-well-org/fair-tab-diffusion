@@ -1,9 +1,9 @@
 [data]
-name = "bank"
+name = "law"
 path = "/rdf/db/public-tabular-datasets/"
 
 [exp]
-method = "fair-smote"
+method = "fairsmote"
 home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 

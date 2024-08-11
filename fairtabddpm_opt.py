@@ -54,10 +54,6 @@ def main():
                 f'{exp_dir}/config.toml',
                 '--exp_name',
                 exp_name,
-                '--train',
-                '--sample',
-                '--eval',
-                '--override',
             ],
             check=True,
         )
@@ -69,7 +65,7 @@ def main():
     
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
     
-    best_config_dir = os.path.join(EXPS_PATH, dataset, 'fair-tab-ddpm', 'best')
+    best_config_dir = os.path.join(EXPS_PATH, dataset, 'fairtabddpm', 'best')
     os.makedirs(best_config_dir, exist_ok=True)
     best_config_path = os.path.join(best_config_dir, 'config.toml')
     
