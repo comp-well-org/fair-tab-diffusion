@@ -469,9 +469,8 @@ def main():
         os.makedirs(ckpt_dir)
     data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     d_num_x = data_desc['d_num_x']
-    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
-    d_num_x = data_desc['d_num_x']
-    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+    feature_cols = data_desc['col_names']
+    label_cols = [data_desc['label_col_name']]
     
     # data
     train_df = pd.read_csv(os.path.join(dataset_dir, 'd_train.csv'), index_col=0)
@@ -523,13 +522,17 @@ def main():
             x = samples[feature_cols]
             y = samples.iloc[:, -1]
             samples = pd.concat([x, y], axis=1)
-            
-            # remove nan
-            samples = samples.dropna()
 
             x_syn_num = samples.iloc[:, :d_num_x]
             x_syn_cat = samples.iloc[:, d_num_x: -1]
+            # get column names that is float in x_syn_cat
+            cat_float_cols = x_syn_cat.columns[x_syn_cat.dtypes == 'float']
+            if len(cat_float_cols) > 0:
+                # convert to int and then to string
+                x_syn_cat[cat_float_cols] = x_syn_cat[cat_float_cols].astype(int).astype(str)
             y_syn = samples.iloc[:, -1]
+            if y_syn.dtype == 'float':
+                y_syn = y_syn.astype(int).astype(str)
             
             # transform categorical data
             x_cat_cols = x_syn_cat.columns

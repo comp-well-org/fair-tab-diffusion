@@ -25,10 +25,17 @@ pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+c
 
 NOTE: German dataset is only used for testing the code but not presented in the paper.
 
-### Models
+### Baselines
 
 - [X] CoDi
-- [X] Fair Smote
+- [X] Fair SMOTE
+- [X] Fair Tabular GAN
+- [X] Goggle
+- [X] Great
+- [X] SMOTE
+- [ ] STaSy
+- [ ] TabDDPM
+- [ ] TabSyn
 
 ## Contact
 

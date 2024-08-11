@@ -880,8 +880,8 @@ def main():
     X_train_cat = torch.tensor(X_train_cat.astype(np.int32)).long()
     categories = np.array(categories)
     norm_fn = sio.load(os.path.join(dataset_dir, 'fn.skops'))
-    feature_cols = pd.read_csv(os.path.join(dataset_dir, 'x_train.csv'), index_col=0).columns.tolist()
-    label_cols = [pd.read_csv(os.path.join(dataset_dir, 'y_train.csv'), index_col=0).columns.tolist()[0]]
+    feature_cols = data_desc['col_names']
+    label_cols = [data_desc['label_col_name']]
     
     # model
     input_size = X_train_num.shape[1] 
