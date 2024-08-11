@@ -27,7 +27,7 @@ NOTE: German dataset is only used for testing the code but not presented in the 
 
 ### Models
 
-- [x] CoDi
+- [X] CoDi
 - [X] Fair Smote
 
 ## Contact
