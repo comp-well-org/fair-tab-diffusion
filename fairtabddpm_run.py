@@ -13,9 +13,8 @@ from src.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
 from src.diffusion.unet import Unet
 from src.diffusion.ddpm import GaussianMultinomialDiffusion
 from src.diffusion.trainer import XYCTabTrainer
-from src.evaluate.skmodels import default_sk_clf
-from lib import load_config, copy_file
-from sklearn.metrics import roc_auc_score
+from src.evaluate.metrics import evaluate_syn_data
+from lib import load_config, copy_file, load_json
 
 warnings.filterwarnings('ignore')
 
@@ -68,13 +67,16 @@ def main():
     )
     
     # data
+    data_path = os.path.join(data_config['path'], data_config['name'])
     data_module = XYCTabDataModule(
-        root=os.path.join(data_config['path'], data_config['name']),
+        root=data_path,
         batch_size=data_config['batch_size'],
     )
     data_desc = data_module.get_data_description()
     norm_fn = data_module.get_norm_fn()
     empirical_dist = data_module.get_empirical_dist()
+    data_sizes = load_json(os.path.join(data_path, 'size.json'))
+    train_size = data_sizes['n_train']
 
     # arguments determined by data
     d_oh_x = data_desc['d_oh_x']
@@ -136,6 +138,9 @@ def main():
         is_fair=is_fair,
         gaussian_parametrization=model_config['parametrization'],
     )
+    num_params = sum(p.numel() for p in diffusion.parameters())
+    with open(os.path.join(exp_dir, 'params.txt'), 'w') as f:
+        f.write(f'number of parameters: {num_params}')
     
     if args.train:
         # train
@@ -172,6 +177,7 @@ def main():
             cond_dist = [torch.ones(n) for n in n_unq_c_lst]
             cond_dist[0] = empirical_dist[0]
         
+        # get feature and label columns
         feature_cols, label_cols = data_module.get_feature_label_cols()
         
         # sampling with seeds
@@ -179,7 +185,7 @@ def main():
             random_seed = seed + i
             torch.manual_seed(random_seed)
             xn, cond = diffusion.sample_all(
-                sample_config['n_samples'],
+                train_size,
                 cond_dist,
                 batch_size=sample_config['batch_size'],
             )
@@ -206,38 +212,25 @@ def main():
         sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
     
     if args.eval:
-        # read validation data
-        x_eval = pd.read_csv(
-            os.path.join(data_config['path'], data_config['name'], 'x_eval.csv'),
-            index_col=0,
-        )
-        c_eval = pd.read_csv(
-            os.path.join(data_config['path'], data_config['name'], 'y_eval.csv'),
-            index_col=0,
-        )
-        y_eval = c_eval.iloc[:, 0]
-        
         # evaluate classifiers trained on synthetic data
-        metric = {}
-        for clf_choice in eval_config['sk_clf_choice']:
-            aucs = []
-            for i in range(n_seeds):
-                random_seed = seed + i
-                synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
-                
-                # read synthetic data
-                x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
-                c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
-                y_syn = c_syn.iloc[:, 0]
-                
-                # train classifier
-                clf = default_sk_clf(clf_choice, random_seed)
-                clf.fit(x_syn, y_syn)
-                y_pred = clf.predict_proba(x_eval)[:, 1]
-                aucs.append(roc_auc_score(y_eval, y_pred))
-            metric[clf_choice] = (np.mean(aucs), np.std(aucs))
+        synth_dir_list = []
+        for i in range(n_seeds):
+            synth_dir = os.path.join(exp_dir, f'synthesis/{seed + i}')
+            if os.path.exists(synth_dir):
+                synth_dir_list.append(synth_dir)
+
+        sst_col_names = data_desc['sst_col_names']
+        metric = evaluate_syn_data(
+            data_dir=os.path.join(data_config['path'], data_config['name']),
+            exp_dir=exp_dir,
+            synth_dir_list=synth_dir_list,
+            sk_clf_lst=eval_config['sk_clf_choice'],
+            sens_cols=sst_col_names,
+        )
+        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
         with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
             json.dump(metric, f, indent=4)
-
+        print(json.dumps(metric, indent=4))
+        
 if __name__ == '__main__':
     main()

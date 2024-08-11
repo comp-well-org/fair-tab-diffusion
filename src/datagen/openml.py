@@ -104,6 +104,9 @@ def process_dataset(
         sio.dump(label_ord_enc, f'{dir_path}/label_encoder.skops')
         with open(f'{dir_path}/desc.json', 'w') as f:
             json.dump(data_desc.desc, f, indent=4)
+        
+        with open(f'{dir_path}/size.json', 'w') as f:
+            json.dump({'n_train': len(x_train), 'n_eval': len(x_eval), 'n_test': len(x_test)}, f, indent=4)
     
     return {
         'desc': data_desc.desc,
@@ -276,11 +279,3 @@ def save_openml_dataset(name: str, x_norm_type='quantile', ratios=(0.5, 0.5), se
         ratios=ratios, seed=seed, dir_path=dir_path,
     )
     return ans
-
-def save_compass(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
-    # constants for compass dataset
-    pass
-
-def save_law_school(x_norm_type='quantile', ratios=(0.5, 0.5), seed=42, dir_path=None):
-    # constants for law school dataset
-    pass
