@@ -73,3 +73,29 @@ def evaluate_syn_data(data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_
             'EOR': eors,
         }
     return metric
+
+def print_metric(metric):
+    val_auc_list = metric['CatBoost']['AUC']['Validation']     
+    test_auc_list = metric['CatBoost']['AUC']['Test']
+    
+    # keep only float values
+    val_auc_list = [x for x in val_auc_list if isinstance(x, float)]
+    test_auc_list = [x for x in test_auc_list if isinstance(x, float)]
+    
+    val_auc = sum(val_auc_list) / len(val_auc_list)   
+    test_auc = sum(test_auc_list) / len(test_auc_list)
+    print(f'Validation AUC: {val_auc:.4f}, Test AUC: {test_auc:.4f}')
+    
+    val_dpr_dict = metric['CatBoost']['DPR']['Validation']
+    test_dpr_dict = metric['CatBoost']['DPR']['Test']
+    for key in val_dpr_dict.keys():
+        val_dpr_list = val_dpr_dict[key]
+        test_dpr_list = test_dpr_dict[key]
+        
+        # keep only float values
+        val_dpr_list = [x for x in val_dpr_list if isinstance(x, float)]
+        test_dpr_list = [x for x in test_dpr_list if isinstance(x, float)]
+        
+        val_dpr = sum(val_dpr_list) / len(val_dpr_list)
+        test_dpr = sum(test_dpr_list) / len(test_dpr_list)
+        print(f'Validation DPR ({key}): {val_dpr:.4f}, Test DPR ({key}): {test_dpr:.4f}')

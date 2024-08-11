@@ -33,7 +33,7 @@ sys.path.append(parent)
 
 # importing the required files from the parent directory
 from lib import load_config, copy_file, load_json
-from src.evaluate.metrics import evaluate_syn_data
+from src.evaluate.metrics import evaluate_syn_data, print_metric
 
 warnings.filterwarnings('ignore')
 
@@ -806,10 +806,12 @@ def main():
             sk_clf_lst=eval_config['sk_clf_choice'],
             sens_cols=sst_col_names,
         )
-        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+
         with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
             json.dump(metric, f, indent=4)
-        print(json.dumps(metric, indent=4))
+            
+        # print metric
+        print_metric(metric)
         
 if __name__ == '__main__':
     main()

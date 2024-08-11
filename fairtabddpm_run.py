@@ -12,7 +12,7 @@ from src.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
 from src.diffusion.unet import Unet
 from src.diffusion.ddpm import GaussianMultinomialDiffusion
 from src.diffusion.trainer import XYCTabTrainer
-from src.evaluate.metrics import evaluate_syn_data
+from src.evaluate.metrics import evaluate_syn_data, print_metric
 from lib import load_config, copy_file, load_json
 
 warnings.filterwarnings('ignore')
@@ -229,7 +229,9 @@ def main():
         )
         with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
             json.dump(metric, f, indent=4)
-        print(json.dumps(metric, indent=4))
+        
+        # print metric
+        print_metric(metric)
         
 if __name__ == '__main__':
     main()

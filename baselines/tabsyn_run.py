@@ -28,7 +28,7 @@ sys.path.append(parent)
 
 # importing the required files from the parent directory
 from lib import load_config, copy_file, load_json
-from src.evaluate.metrics import evaluate_syn_data
+from src.evaluate.metrics import evaluate_syn_data, print_metric
 
 warnings.filterwarnings('ignore')
 
@@ -829,7 +829,6 @@ def train_diffusion_model(
     best_loss = float('inf')
     curr_loss = 0
     patience = 0
-    start_time = time.time()
     for epoch in range(num_epochs):
         if epoch == num_epochs - 1:
             print(f'training -> epoch: {epoch + 1}/{num_epochs}, loss: {curr_loss:.4f} -- best: {best_loss:.4f}')
@@ -863,10 +862,6 @@ def train_diffusion_model(
             if patience == 500:
                 print('early stopping')
                 break
-
-    end_time = time.time()
-    time_elapsed = end_time - start_time
-    print(f'training time: {time_elapsed:.2f}s')
 
 ################################################################################
 # main
@@ -1005,7 +1000,8 @@ def main():
         with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
             time_msg = f'training time: {end_time - start_time:.2f} seconds with {n_epochs} epochs'
             f.write(time_msg)
-            
+        print()
+        
     if args.sample:
         # loading    
         in_dim = train_z.shape[1] 
@@ -1054,7 +1050,8 @@ def main():
         with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
             time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
             f.write(time_msg)
-
+        print()
+        
     if args.eval:
         # evaluate classifiers trained on synthetic data
         synth_dir_list = []
@@ -1071,9 +1068,12 @@ def main():
             sk_clf_lst=eval_config['sk_clf_choice'],
             sens_cols=sst_col_names,
         )
-        # data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_lst: list, sens_cols: list
+
         with open(os.path.join(exp_dir, 'metric.json'), 'w') as f:
             json.dump(metric, f, indent=4)
+            
+        # print metric
+        print_metric(metric)
         
 if __name__ == '__main__':
     main()
