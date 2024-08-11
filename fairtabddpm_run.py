@@ -6,7 +6,6 @@ import argparse
 import warnings
 import numpy as np
 import pandas as pd
-import skops.io as sio
 from src.diffusion.utils import XYCTabDataModule
 from src.diffusion.estimator import PosteriorEstimator, DenoiseFn
 from src.diffusion.configs import DenoiseFnCfg, DataCfg, GuidCfg
@@ -157,7 +156,7 @@ def main():
         trainer.fit(diffusion, data_module, exp_dir)
         end_time = time.time()
         with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
-            time_msg = f'time: {end_time - start_time:.2f} sec'
+            time_msg = f'training time: {end_time - start_time:.2f} seconds'
             f.write(time_msg)
     
     if args.sample:
@@ -181,6 +180,7 @@ def main():
         feature_cols, label_cols = data_module.get_feature_label_cols()
         
         # sampling with seeds
+        start_time = time.time()
         for i in range(n_seeds):
             random_seed = seed + i
             torch.manual_seed(random_seed)
@@ -204,12 +204,11 @@ def main():
             x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'))
             xn_syn.to_csv(os.path.join(synth_dir, 'xn_syn.csv'))
             y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'))
-        
-        # copy `data_desc` as json file and `norm_fn` as skops file
-        synth_dir = os.path.join(exp_dir, 'synthesis')
-        with open(os.path.join(synth_dir, 'desc.json'), 'w') as f:
-            json.dump(data_desc, f, indent=4)
-        sio.dump(norm_fn, os.path.join(synth_dir, 'fn.skops'))
+
+        end_time = time.time()
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\nsampling time: {end_time - start_time:.2f} seconds with {n_seeds} seeds'
+            f.write(time_msg)
     
     if args.eval:
         # evaluate classifiers trained on synthetic data
