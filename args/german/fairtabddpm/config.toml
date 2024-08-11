@@ -42,7 +42,7 @@ attention_levels = [
 ]
 
 [train]
-n_epochs = 3
+n_epochs = 1
 lr = 0.0003938516710354697
 weight_decay = 0.0
 max_non_improve = 500
