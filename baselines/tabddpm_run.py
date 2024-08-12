@@ -26,6 +26,7 @@ sys.path.append(parent)
 
 from lib import load_config, copy_file
 from src.evaluate.metrics import evaluate_syn_data, print_metric
+from constant import DB_PATH, EXPS_PATH
 
 warnings.filterwarnings('ignore')
 

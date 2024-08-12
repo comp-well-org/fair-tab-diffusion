@@ -14,6 +14,7 @@ from src.diffusion.ddpm import GaussianMultinomialDiffusion
 from src.diffusion.trainer import XYCTabTrainer
 from src.evaluate.metrics import evaluate_syn_data, print_metric
 from lib import load_config, copy_file, load_json
+from constant import DB_PATH, EXPS_PATH
 
 warnings.filterwarnings('ignore')
 

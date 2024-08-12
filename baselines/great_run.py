@@ -30,6 +30,7 @@ sys.path.append(parent)
 # importing the required files from the parent directory
 from lib import load_config, copy_file, load_json
 from src.evaluate.metrics import evaluate_syn_data, print_metric
+from constant import DB_PATH, EXPS_PATH
 
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = 'true'
 warnings.filterwarnings('ignore')
