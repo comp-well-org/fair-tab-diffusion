@@ -88,6 +88,9 @@ def print_metric(metric):
     
     val_dpr_dict = metric['CatBoost']['DPR']['Validation']
     test_dpr_dict = metric['CatBoost']['DPR']['Test']
+    
+    val_eor_dict = metric['CatBoost']['EOR']['Validation']
+    test_eor_dict = metric['CatBoost']['EOR']['Test']
     for key in val_dpr_dict.keys():
         val_dpr_list = val_dpr_dict[key]
         test_dpr_list = test_dpr_dict[key]
@@ -99,3 +102,15 @@ def print_metric(metric):
         val_dpr = sum(val_dpr_list) / len(val_dpr_list)
         test_dpr = sum(test_dpr_list) / len(test_dpr_list)
         print(f'Validation DPR ({key}): {val_dpr:.4f}, Test DPR ({key}): {test_dpr:.4f}')
+    
+    for key in val_eor_dict.keys():
+        val_eor_list = val_eor_dict[key]
+        test_eor_list = test_eor_dict[key]
+        
+        # keep only float values
+        val_eor_list = [x for x in val_eor_list if isinstance(x, float)]
+        test_eor_list = [x for x in test_eor_list if isinstance(x, float)]
+        
+        val_eor = sum(val_eor_list) / len(val_eor_list)
+        test_eor = sum(test_eor_list) / len(test_eor_list)
+        print(f'Validation EOR ({key}): {val_eor:.4f}, Test EOR ({key}): {test_eor:.4f}')
