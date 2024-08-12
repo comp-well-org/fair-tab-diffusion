@@ -5,7 +5,6 @@ n_seeds = 3
 [methods]
 considered = [
     "fairsmote",
-    "fairtabgan",
     "tabddpm",
 ]
 

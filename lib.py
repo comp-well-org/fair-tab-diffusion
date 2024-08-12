@@ -3,6 +3,7 @@ import json
 import tomli
 import shutil
 import tomli_w
+import skops.io as sio
 
 def load_config(path) -> dict:
     with open(path, 'rb') as f:
@@ -33,3 +34,6 @@ def load_json(js_path) -> dict:
 def write_json(js, js_path) -> None:
     with open(js_path, 'w') as f:
         json.dump(js, f, indent=4)
+
+def load_encoder(encoder_path) -> object:
+    return sio.load(encoder_path)
