@@ -13,7 +13,7 @@ parent = os.path.dirname(current)
 # adding the parent directory to the sys.path
 sys.path.append(parent)
 
-from constant import DB_PATH, EXPS_PATH
+from constant import DB_PATH, EXPS_PATH, PLOTS_PATH
 from lib import load_json, load_config
 
 warnings.filterwarnings('ignore')

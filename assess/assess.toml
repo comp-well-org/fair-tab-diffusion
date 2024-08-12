@@ -1,14 +1,9 @@
 [exp]
-home = "/rdf/experiments/fair-tab-diffusion-exps/"
 seed = 2024
 n_seeds = 3
 
-[plot]
-path = "./plots/"
-
 [data]
 name = "german"
-path = "/rdf/db/public-tabular-datasets/"
 
 [methods]
 considered = [
