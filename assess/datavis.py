@@ -14,15 +14,13 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 from constant import DB_PATH, EXPS_PATH, PLOTS_PATH
-from lib import load_json
+from lib import load_json, load_config
 
 warnings.filterwarnings('ignore')
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='german')
-    parser.add_argument('--method', type=str, default='german')
-    parser.add_argument('--exp_name', type=str, default='german')
+    parser.add_argument('--config', type=str, default='./assess.toml')
 
 if __name__ == '__main__':
     main()
