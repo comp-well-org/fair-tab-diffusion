@@ -19,6 +19,8 @@ warnings.filterwarnings('ignore')
 
 def main():
     pass
+    # low-order stats: column-wise density estimation and pair-wise column correlation
+    # high-order stats: alpha-precision and beta-recall scores that measure the overall fidelity and diversity of synthetic data
 
 if __name__ == '__main__':
     main()
