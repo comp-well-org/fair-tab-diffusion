@@ -85,3 +85,8 @@ Avoid repeatition to improve the code quality:
 - [ ] Delete home of experiments and path of datasets in all `config.toml` files
 - [ ] Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
 - [ ] Find commonly used functions in all running scripts and move them to `utils.py`
+
+Organize the code:
+
+- [ ] Move `fairtabddpm.sh`, `fairtabddpm_run.py`, `fairtabddpm_opt.py` to `baseline` directory and rename `baseline` directory to `methods`, and edit `readme.md` accordingly
+- [ ] Move `src/evaluate/metrics.py` out to the root directory because it is specific to the project

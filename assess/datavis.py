@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import warnings
 import argparse
 import matplotlib.pyplot as plt
@@ -21,6 +22,16 @@ warnings.filterwarnings('ignore')
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='./assess.toml')
+
+    args = parser.parse_args()
+    if args.config:
+        config = load_config(args.config)
+    else:
+        raise ValueError('config file is required')
+    
+    # message
+    print(json.dumps(config, indent=4))
+    print('-' * 80)
 
 if __name__ == '__main__':
     main()
