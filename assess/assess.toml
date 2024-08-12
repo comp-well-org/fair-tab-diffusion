@@ -3,11 +3,10 @@ seed = 2024
 n_seeds = 3
 
 [data]
-name = "german"
+name = "adult"
 
 [methods]
 considered = [
-    "fairtabddpm",
     "fairsmote",
     "fairtabgan",
     "tabddpm",
