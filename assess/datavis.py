@@ -31,7 +31,7 @@ def read_data(data_dir, flag='train'):
 def plot_col_distribution(
     config: dict,
     save_path: str = PLOTS_PATH,
-):
+):  
     # intialization
     dataset = config['data']['name']
     data_dirs = {}

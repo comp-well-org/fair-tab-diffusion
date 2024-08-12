@@ -3,6 +3,7 @@ import sys
 import json
 import warnings
 import argparse
+from datavis import read_data
 import matplotlib.pyplot as plt
 
 # getting the name of the directory where the this file is present
@@ -30,7 +31,7 @@ def main():
         raise ValueError('config file is required')
     
     # message
-    print(json.dumps(config, indent=4))
+    # print(json.dumps(config, indent=4))
     print('-' * 80)
 
 if __name__ == '__main__':

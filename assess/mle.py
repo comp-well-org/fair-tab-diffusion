@@ -30,7 +30,7 @@ def main():
         raise ValueError('config file is required')
     
     # message
-    print(json.dumps(config, indent=4))
+    # print(json.dumps(config, indent=4))
     print('-' * 80)
 
 if __name__ == '__main__':
