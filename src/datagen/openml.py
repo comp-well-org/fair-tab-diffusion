@@ -42,6 +42,26 @@ def process_dataset(
     seed: int = 42,
     dir_path: str = None,
 ):
+    ratio1, ratio2 = ratios
+    x_train, x_rest, y_train, y_rest = train_test_split(
+        feature_df, label_df, test_size=ratio1, random_state=seed,
+    )
+    x_eval, x_test, y_eval, y_test = train_test_split(
+        x_rest, y_rest, test_size=ratio2, random_state=seed,
+    )
+    x_num_train_norm, x_num_eval_norm, x_num_test_norm, normalizer = norm_tab_x_df(
+        (x_train.iloc[:, :d_num_x], x_eval.iloc[:, :d_num_x], x_test.iloc[:, :d_num_x]),
+        x_norm_type=x_norm_type,
+        seed=seed,
+    )
+    xn_train = pd.concat([x_num_train_norm, x_train.iloc[:, d_num_x:]], axis=1)
+    xn_eval = pd.concat([x_num_eval_norm, x_eval.iloc[:, d_num_x:]], axis=1)
+    xn_test = pd.concat([x_num_test_norm, x_test.iloc[:, d_num_x:]], axis=1)
+    
+    data_train = data_all_cp.loc[x_train.index]
+    data_eval = data_all_cp.loc[x_eval.index]
+    data_test = data_all_cp.loc[x_test.index]
+
     data_desc = TabDataDesc(
         dataset_name=dataset_name,
         dataset_type=dataset_type,
@@ -63,27 +83,10 @@ def process_dataset(
         n_unq_y=n_unq_y,
         cat_od_y_fn=cat_od_y_fn,
         n_unq_c_lst=n_unq_c_lst,
+        train_num=len(x_train),
+        eval_num=len(x_eval),
+        test_num=len(x_test),
     )
-
-    ratio1, ratio2 = ratios
-    x_train, x_rest, y_train, y_rest = train_test_split(
-        feature_df, label_df, test_size=ratio1, random_state=seed,
-    )
-    x_eval, x_test, y_eval, y_test = train_test_split(
-        x_rest, y_rest, test_size=ratio2, random_state=seed,
-    )
-    x_num_train_norm, x_num_eval_norm, x_num_test_norm, normalizer = norm_tab_x_df(
-        (x_train.iloc[:, :d_num_x], x_eval.iloc[:, :d_num_x], x_test.iloc[:, :d_num_x]),
-        x_norm_type=x_norm_type,
-        seed=seed,
-    )
-    xn_train = pd.concat([x_num_train_norm, x_train.iloc[:, d_num_x:]], axis=1)
-    xn_eval = pd.concat([x_num_eval_norm, x_eval.iloc[:, d_num_x:]], axis=1)
-    xn_test = pd.concat([x_num_test_norm, x_test.iloc[:, d_num_x:]], axis=1)
-    
-    data_train = data_all_cp.loc[x_train.index]
-    data_eval = data_all_cp.loc[x_eval.index]
-    data_test = data_all_cp.loc[x_test.index]
 
     if dir_path:
         if not os.path.exists(dir_path):

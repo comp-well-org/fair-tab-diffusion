@@ -24,6 +24,9 @@ class TabDataDesc:
         n_unq_y: int,
         cat_od_y_fn: dict[int, str],
         n_unq_c_lst: list[int],
+        train_num: int,
+        eval_num: int,
+        test_num: int,
     ) -> None:
         """Initialize an object for dataset description.
         
@@ -48,6 +51,9 @@ class TabDataDesc:
             n_unq_y: number of unique values for the outcome.
             cat_od_y_fn: mapping function for the outcome.
             n_unq_c_lst: number of unique values for each sensitive feature.
+            train_num: number of training samples.
+            eval_num: number of validation samples.
+            test_num: number of test samples.
         """
         self._desc = {}
         self._desc['dataset_name'] = dataset_name
@@ -70,6 +76,9 @@ class TabDataDesc:
         self._desc['n_unq_y'] = n_unq_y
         self._desc['cat_od_y_fn'] = cat_od_y_fn
         self._desc['n_unq_c_lst'] = n_unq_c_lst
+        self._desc['train_num'] = train_num
+        self._desc['eval_num'] = eval_num
+        self._desc['test_num'] = test_num
     
     @property
     def desc(self) -> str:
