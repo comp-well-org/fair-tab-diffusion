@@ -1,0 +1,49 @@
+[exp]
+home = "/rdf/experiments/fair-tab-diffusion-exps/"
+seed = 2024
+n_seeds = 3
+
+[plot]
+path = "./plots/"
+
+[data]
+name = "german"
+path = "/rdf/db/public-tabular-datasets/"
+
+[methods]
+considered = [
+    "fairtabddpm",
+    "fairsmote",
+    "fairtabgan",
+    "tabddpm",
+]
+
+[methods.codi]
+session = "best"
+
+[methods.fairsmote]
+session = "best"
+
+[methods.fairtabddpm]
+session = "best"
+
+[methods.fairtabgan]
+session = "best"
+
+[methods.goggle]
+session = "best"
+
+[methods.great]
+session = "best"
+
+[methods.smote]
+session = "best"
+
+[methods.stasy]
+session = "best"
+
+[methods.tabddpm]
+session = "best"
+
+[methods.tabsyn]
+session = "best"
