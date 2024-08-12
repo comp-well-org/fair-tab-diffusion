@@ -24,6 +24,30 @@ Avoid repeatition to improve the code quality:
 - [ ] Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
 - [ ] Find commonly used functions in all running scripts and move them to `utils.py`
 
+## Running
+
+```bash
+# download and preprocess datasets
+python build.py
+# run experiments for our method
+bash fairtabddpm.sh
+```
+
+```bash
+# go to baselines directory
+cd baselines
+# run experiments for baselines
+bash codi.sh
+bash fairsmote.sh
+bash fairtabgan.sh
+bash goggle.sh
+bash great.sh
+bash smote.sh
+bash stasy.sh
+bash tabddpm.sh
+bash tabsyn.sh
+```
+
 ## Benchmarks
 
 ### Datasets
