@@ -14,6 +14,15 @@ pip install dgl -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
 pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
 ```
 
+## To do
+
+Avoid repeatition:
+
+- [ ] Replace `exp_config['home']` by importing `EXPS_PATH` from `constant.py` in all running scripts
+- [ ] Replace `data_config['path']` by importing `DB_PATH` from `constant.py` in all running scripts
+- [ ] Delete home of experiments and path of datasets in all `config.toml` files
+- [ ] (Optional) Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
+
 ## Benchmarks
 
 ### Datasets
