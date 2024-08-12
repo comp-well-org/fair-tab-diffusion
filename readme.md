@@ -16,12 +16,13 @@ pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+c
 
 ## To do
 
-Avoid repeatition:
+Avoid repeatition to improve the code quality:
 
 - [ ] Replace `exp_config['home']` by importing `EXPS_PATH` from `constant.py` in all running scripts
 - [ ] Replace `data_config['path']` by importing `DB_PATH` from `constant.py` in all running scripts
 - [ ] Delete home of experiments and path of datasets in all `config.toml` files
-- [ ] (Optional) Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
+- [ ] Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
+- [ ] Find commonly used functions in all running scripts and move them to `utils.py`
 
 ## Benchmarks
 
