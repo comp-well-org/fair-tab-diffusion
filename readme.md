@@ -2,8 +2,6 @@
 
 ## Setup
 
-### Environment
-
 The PyTorch version we used in this project is `2.3.0+cu121`, and you can install the required packages by running the following command:
 
 ```bash
@@ -14,25 +12,17 @@ pip install dgl -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
 pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
 ```
 
-## To do
+To download and preprocess the datasets, run the following command:
 
-Avoid repeatition to improve the code quality:
+```bash
+python build.py
+```
 
-- [ ] Replace `exp_config['home']` by importing `EXPS_PATH` from `constant.py` in all running scripts
-- [ ] Replace `data_config['path']` by importing `DB_PATH` from `constant.py` in all running scripts
-- [ ] Delete home of experiments and path of datasets in all `config.toml` files
-- [ ] Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
-- [ ] Find commonly used functions in all running scripts and move them to `utils.py`
-
-## Running
-
-### Experiments
+## Running experiments
 
 Under the root directory, run the following commands to reproduce the results of our method:
 
 ```bash
-# download and preprocess datasets
-python build.py
 # run experiments for our method
 bash fairtabddpm.sh
 ```
@@ -54,7 +44,7 @@ bash tabddpm.sh
 bash tabsyn.sh
 ```
 
-### Assessing the quality of synthetic data
+## Assessing the quality of synthetic data
 
 TBA
 
@@ -85,3 +75,13 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 ## Contact
 
 - Zeyu Yang
+
+## To do
+
+Avoid repeatition to improve the code quality:
+
+- [ ] Replace `exp_config['home']` by importing `EXPS_PATH` from `constant.py` in all running scripts
+- [ ] Replace `data_config['path']` by importing `DB_PATH` from `constant.py` in all running scripts
+- [ ] Delete home of experiments and path of datasets in all `config.toml` files
+- [ ] Add a new argument `--method` to optimization scripts and merge all optimization scripts into one
+- [ ] Find commonly used functions in all running scripts and move them to `utils.py`
