@@ -26,12 +26,18 @@ Avoid repeatition to improve the code quality:
 
 ## Running
 
+### Experiments
+
+Under the root directory, run the following commands to reproduce the results of our method:
+
 ```bash
 # download and preprocess datasets
 python build.py
 # run experiments for our method
 bash fairtabddpm.sh
 ```
+
+To reproduce the results of baseline methods, run the following commands:
 
 ```bash
 # go to baselines directory
@@ -47,6 +53,10 @@ bash stasy.sh
 bash tabddpm.sh
 bash tabsyn.sh
 ```
+
+### Assessing the quality of synthetic data
+
+TBA
 
 ## Benchmarks
 
