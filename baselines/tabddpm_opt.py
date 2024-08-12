@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='adult')
     parser.add_argument('--n_trials', type=int, default=10)
+    parser.add_argument('--gpu_id', type=int, default=0)
     args = parser.parse_args()
     dataset = args.dataset
     n_trials = args.n_trials
@@ -58,6 +59,7 @@ def main():
         base_config['train']['lr'] = lr
         base_config['train']['n_epochs'] = n_epochs
         base_config['model']['num_timesteps'] = num_timesteps
+        base_config['exp']['device'] = f'cuda:{args.gpu_id}'
         
         trial.set_user_attr('config', base_config)
         lib.write_config(base_config, f'{exp_dir}/config.toml')
