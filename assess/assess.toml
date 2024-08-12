@@ -2,9 +2,6 @@
 seed = 2024
 n_seeds = 3
 
-[data]
-name = "adult"
-
 [methods]
 considered = [
     "fairsmote",

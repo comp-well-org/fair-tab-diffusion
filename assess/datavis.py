@@ -20,6 +20,27 @@ from lib import load_json, load_config
 
 warnings.filterwarnings('ignore')
 
+METHOD_MAPPER = {
+    'codi': 'CoDi',
+    'fairsmote': 'FairSMOTE',
+    'fairtabgan': 'FairTabGAN',
+    'goggle': 'Goggle',
+    'great': 'GReaT',
+    'smote': 'SMOTE',
+    'stasy': 'STaSy',
+    'tabddpm': 'TabDDPM',
+    'tabsyn': 'TabSyn',
+    'fairtabddpm': 'Ours',
+}
+
+DATASET_MAPPER = {
+    'adult': 'Adult',
+    'compass': 'COMPAS',
+    'german': 'German',
+    'bank': 'Bank',
+    'law': 'Law',
+}
+
 def read_data(data_dir, flag='train'):
     x = pd.read_csv(os.path.join(data_dir, f'x_{flag}.csv'), index_col=0)
     y = pd.read_csv(os.path.join(data_dir, f'y_{flag}.csv'), index_col=0)
@@ -29,11 +50,11 @@ def read_data(data_dir, flag='train'):
     return data
 
 def plot_col_distribution(
+    dataset: str,
     config: dict,
     save_path: str = PLOTS_PATH,
 ):  
     # intialization
-    dataset = config['data']['name']
     data_dirs = {}
     seed = config['exp']['seed']
     
@@ -63,14 +84,33 @@ def plot_col_distribution(
         print()
     
     # numerical features
-    fig, ax = plt.subplots()
+    for num_col in num_col_names:
+        fig, ax = plt.subplots()
+        ax.set_title(DATASET_MAPPER[dataset])
+        ax.set_xlabel(num_col)
+        ax.set_ylabel('Density')
+        
+        # save plot
+        filename = f'{dataset}_num_{num_col}_dist.png'.strip().lower()
+        save_path = os.path.join(PLOTS_PATH, filename)
+        plt.savefig(save_path)
+        break
     
     # categorical features
-    fig, ax = plt.subplots()
-
-
+    for cat_col in cat_col_names:
+        fig, ax = plt.subplots()
+        ax.set_xlabel(cat_col)
+        ax.set_ylabel('Count')
+        
+        # save plot
+        filename = f'{dataset}_cat_{cat_col}_dist.png'.strip().lower()
+        save_path = os.path.join(PLOTS_PATH, filename)
+        plt.savefig(save_path)
+        break
+    
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='adult')
     parser.add_argument('--config', type=str, default='./assess.toml')
 
     args = parser.parse_args()
@@ -85,6 +125,7 @@ def main():
     
     # plot numerical distribution
     plot_col_distribution(
+        dataset=args.dataset,
         config=config,
     )
 

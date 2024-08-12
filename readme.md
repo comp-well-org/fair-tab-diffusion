@@ -66,7 +66,7 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 - [X] Fair SMOTE
 - [X] Fair Tabular GAN
 - [X] Goggle
-- [X] Great
+- [X] GReaT
 - [X] SMOTE
 - [X] STaSy
 - [X] TabDDPM
