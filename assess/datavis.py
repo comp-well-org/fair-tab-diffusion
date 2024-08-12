@@ -112,30 +112,32 @@ def plot_col_distribution(
         print(data_dicts[method].head(3))
         print()
     
-    # # numerical features
-    # for num_col in num_col_names:
-    #     fig, ax = plt.subplots()
-    #     ax.set_title(DATASET_MAPPER[dataset])
-    #     ax.set_xlabel(num_col)
-    #     ax.set_ylabel('Density')
+    # numerical features
+    for num_col in num_col_names:
+        fig, ax = plt.subplots()
+        ax.set_title(DATASET_MAPPER[dataset])
+        ax.set_xlabel(num_col)
+        ax.set_ylabel('Density')
+        plt.tight_layout()
         
-    #     # save plot
-    #     filename = f'{dataset}_num_{num_col}_dist.png'.strip().lower()
-    #     save_path = os.path.join(PLOTS_PATH, filename)
-    #     plt.savefig(save_path)
-    #     break
+        # save plot
+        filename = f'{dataset}_num_{num_col}_dist.pdf'.strip().lower()
+        save_path = os.path.join(PLOTS_PATH, filename)
+        plt.savefig(save_path)
+        break
     
-    # # categorical features
-    # for cat_col in all_cat_col_names:
-    #     fig, ax = plt.subplots()
-    #     ax.set_xlabel(cat_col)
-    #     ax.set_ylabel('Count')
+    # categorical features
+    for cat_col in all_cat_col_names:
+        fig, ax = plt.subplots()
+        ax.set_xlabel(cat_col)
+        ax.set_ylabel('Count')
+        plt.tight_layout()
         
-    #     # save plot
-    #     filename = f'{dataset}_cat_{cat_col}_dist.png'.strip().lower()
-    #     save_path = os.path.join(PLOTS_PATH, filename)
-    #     plt.savefig(save_path)
-    #     break
+        # save plot
+        filename = f'{dataset}_cat_{cat_col}_dist.pdf'.strip().lower()
+        save_path = os.path.join(PLOTS_PATH, filename)
+        plt.savefig(save_path)
+        break
     
 def main():
     parser = argparse.ArgumentParser()
