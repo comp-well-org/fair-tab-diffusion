@@ -61,6 +61,9 @@ def process_dataset(
     data_train = data_all_cp.loc[x_train.index]
     data_eval = data_all_cp.loc[x_eval.index]
     data_test = data_all_cp.loc[x_test.index]
+    
+    d_types = {col: str(x_train[col].dtype) for col in x_train.columns}
+    d_types[label_col_name] = str(y_train[label_col_name].dtype)
 
     data_desc = TabDataDesc(
         dataset_name=dataset_name,
@@ -86,8 +89,9 @@ def process_dataset(
         train_num=len(x_train),
         eval_num=len(x_eval),
         test_num=len(x_test),
+        d_types=d_types,
     )
-
+    
     if dir_path:
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)

@@ -393,6 +393,7 @@ def main():
     # data
     dataset_dir = os.path.join(data_config['path'], data_config['name'])
     data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
+    d_types = data_desc['d_types']
     d_num_x = data_desc['d_num_x']
     num_col_names = data_desc['num_col_names']
     cat_col_names = data_desc['cat_col_names']
@@ -479,7 +480,7 @@ def main():
             
             # transform categorical data
             x_cat_cols = x_syn_cat.columns
-            
+            x_syn_cat = x_syn_cat.astype(str)
             x_syn_cat = cat_encoder.transform(x_syn_cat)
             x_syn_cat = pd.DataFrame(x_syn_cat, columns=x_cat_cols)
             x_syn = pd.concat([x_syn_num, x_syn_cat], axis=1)

@@ -27,6 +27,7 @@ class TabDataDesc:
         train_num: int,
         eval_num: int,
         test_num: int,
+        d_types: dict,
     ) -> None:
         """Initialize an object for dataset description.
         
@@ -54,6 +55,7 @@ class TabDataDesc:
             train_num: number of training samples.
             eval_num: number of validation samples.
             test_num: number of test samples.
+            d_types: data types for each column.
         """
         self._desc = {}
         self._desc['dataset_name'] = dataset_name
@@ -79,6 +81,7 @@ class TabDataDesc:
         self._desc['train_num'] = train_num
         self._desc['eval_num'] = eval_num
         self._desc['test_num'] = test_num
+        self._desc['d_types'] = d_types
     
     @property
     def desc(self) -> str:
