@@ -19,7 +19,7 @@ session = "best"
 session = "best"
 
 [methods.fairtabgan]
-session = "best"
+session = "check"
 
 [methods.goggle]
 session = "best"
