@@ -1,20 +1,5 @@
 # Fair Tabular Diffusion
 
-<!-- table of contents -->
-## Table of Contents
-
-- [Introduction](#introduction)
-- [Setup](#setup)
-  * [Environment](#environment)
-- [To do](#to-do)
-- [Running](#running)
-    * [Experiments](#experiments)
-    * [Assessing the quality of synthetic data](#assessing-the-quality-of-synthetic-data)
-- [Benchmarks](#benchmarks)
-    * [Datasets](#datasets)
-    * [Baselines](#baselines)
-- [Contact](#contact)
-
 ## Setup
 
 ### Environment
