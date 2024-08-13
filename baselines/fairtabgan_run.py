@@ -176,6 +176,8 @@ class Generator(nn.Module):
         self.lin_numerical = nn.Linear(self._input_dim, self._num_continuous_columns)
         self.lin_cat = nn.ModuleDict()
         for key, value in self._discrete_columns.items():
+            if '.' in key:
+                key = key.replace('.', '_')
             self.lin_cat[key] = nn.Linear(self._input_dim, value)
 
     def forward(self, x):
