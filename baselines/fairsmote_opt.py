@@ -83,7 +83,10 @@ def main():
     best_config = study.best_trial.user_attrs['config']
     
     lib.write_config(best_config, best_config_path)
-    lib.write_json(optuna.importance.get_param_importances(study), os.path.join(best_config_dir, 'importance.json'))
+    
+    # if total variance in all trees is zero, then the importance is not calculated
+    if 'importance' in study.best_trial.user_attrs:
+        lib.write_json(optuna.importance.get_param_importances(study), os.path.join(best_config_dir, 'importance.json'))
     
     subprocess.run(
         [
