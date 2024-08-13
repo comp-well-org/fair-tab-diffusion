@@ -48,24 +48,32 @@ def evaluate_syn_data(data_dir: str, exp_dir: str, synth_dir_list: list, sk_clf_
             
             # train classifier
             clf = default_sk_clf(clf_choice)
-            clf.fit(x_syn, y_syn)
-            
-            # training set
-            for flag, xx, yy, cc in zip(
-                ['Train', 'Validation', 'Test'], 
-                [x_train, x_eval, x_test], 
-                [y_train, y_eval, y_test], 
-                [c_train, c_eval, c_test],
-            ):
-                y_pred_label = clf.predict(xx)
-                y_pred_proba = clf.predict_proba(xx)[:, 1]
-                aucs[flag].append(roc_auc_score(yy, y_pred_proba))
-                for s_col in sens_cols:
-                    ss = cc[s_col]
-                    dpr = demographic_parity_ratio(yy, y_pred_label, sensitive_features=ss)
-                    eor = equalized_odds_ratio(yy, y_pred_label, sensitive_features=ss)
-                    dprs[flag][s_col].append(dpr)
-                    eors[flag][s_col].append(eor)
+            # if y_syn has only one unique value, skip training
+            if len(y_syn.unique()) == 1:
+                for flag in ['Train', 'Validation', 'Test']:
+                    aucs[flag].append(0.0)
+                    for s_col in sens_cols:
+                        dprs[flag][s_col].append(0.0)
+                        eors[flag][s_col].append(0.0)
+            else:
+                clf.fit(x_syn, y_syn)
+                
+                # training set
+                for flag, xx, yy, cc in zip(
+                    ['Train', 'Validation', 'Test'], 
+                    [x_train, x_eval, x_test], 
+                    [y_train, y_eval, y_test], 
+                    [c_train, c_eval, c_test],
+                ):
+                    y_pred_label = clf.predict(xx)
+                    y_pred_proba = clf.predict_proba(xx)[:, 1]
+                    aucs[flag].append(roc_auc_score(yy, y_pred_proba))
+                    for s_col in sens_cols:
+                        ss = cc[s_col]
+                        dpr = demographic_parity_ratio(yy, y_pred_label, sensitive_features=ss)
+                        eor = equalized_odds_ratio(yy, y_pred_label, sensitive_features=ss)
+                        dprs[flag][s_col].append(dpr)
+                        eors[flag][s_col].append(eor)
         
         metric[clf_choice] = {
             'AUC': aucs,
