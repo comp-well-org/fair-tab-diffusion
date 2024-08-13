@@ -497,6 +497,13 @@ def main():
             x_syn_num = fake_df.iloc[:, :d_num_x]
             x_syn_cat = fake_df.iloc[:, d_num_x: -1]
             y_syn = fake_df.iloc[:, -1]
+            y_syn = y_syn.astype(str)
+            
+            # FIXME: this is only for the law datast, please fix this
+            if list(y_syn.unique()) == ['False', 'True']:
+                # capitalize
+                y_syn = y_syn.replace({'True': 'TRUE', 'False': 'FALSE'})
+            y_syn = pd.DataFrame(y_syn)
             
             # transform categorical data
             x_cat_cols = x_syn_cat.columns
@@ -504,7 +511,7 @@ def main():
             x_syn_cat = cat_encoder.transform(x_syn_cat)
             x_syn_cat = pd.DataFrame(x_syn_cat, columns=x_cat_cols)
             x_syn = pd.concat([x_syn_num, x_syn_cat], axis=1)
-            y_syn = label_encoder.transform(pd.DataFrame(y_syn))
+            y_syn = label_encoder.transform(y_syn)
             y_syn = pd.DataFrame(y_syn, columns=label_cols)
 
             synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
