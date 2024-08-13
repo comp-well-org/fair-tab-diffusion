@@ -44,6 +44,24 @@ FAIR_CONFIG = {
         'label': 'Risk',
         'desirable': 'good',
     },
+    'bank': {
+        'sensitive': 'age-group',
+        'underprivileged': 'young',
+        'label': 'y',
+        'desirable': 'no',
+    },
+    'compass': {
+        'sensitive': 'sex',
+        'underprivileged': '0',
+        'label': 'is_recid',
+        'desirable': '-1',
+    },
+    'law': {
+        'sensitive': 'gender',
+        'underprivileged': 'female',
+        'label': 'ugpagt3',
+        'desirable': 'TRUE',
+    },
 }
 
 def get_ohe_data(df, ss, yy, s_under, y_desire, num_cols, cat_cols):
