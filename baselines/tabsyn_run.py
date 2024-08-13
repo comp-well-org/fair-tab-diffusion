@@ -744,7 +744,12 @@ def train_latent_model(
 
     beta = max_beta
     
-    for _ in range(num_epochs):
+    for epoch in range(num_epochs):
+        if epoch == num_epochs - 1:
+            print(f'training latent -> epoch: {epoch + 1}/{num_epochs}')
+        else:
+            print(f'training latent -> epoch: {epoch + 1}/{num_epochs}', end='\r')
+            
         curr_loss_multi = 0.0
         curr_loss_gauss = 0.0
         curr_loss_kl = 0.0
@@ -832,9 +837,9 @@ def train_diffusion_model(
     patience = 0
     for epoch in range(num_epochs):
         if epoch == num_epochs - 1:
-            print(f'training -> epoch: {epoch + 1}/{num_epochs}, loss: {curr_loss:.4f} -- best: {best_loss:.4f}')
+            print(f'training diffusion -> epoch: {epoch + 1}/{num_epochs}, loss: {curr_loss:.4f} -- best: {best_loss:.4f}')
         else:
-            print(f'training -> epoch: {epoch + 1}/{num_epochs}, loss: {curr_loss:.4f} -- best: {best_loss:.4f}', end='\r')
+            print(f'training diffusion -> epoch: {epoch + 1}/{num_epochs}, loss: {curr_loss:.4f} -- best: {best_loss:.4f}', end='\r')
 
         batch_loss = 0.0
         len_input = 0
@@ -964,6 +969,8 @@ def main():
     model_save_path = f'{ckpt_dir}/model.pt'
     encoder_save_path = f'{ckpt_dir}/encoder.pt'
     decoder_save_path = f'{ckpt_dir}/decoder.pt'
+    
+    start_time = time.time()
     train_latent_model(
         model, pre_encoder, pre_decoder, optimizer, scheduler, n_epochs,
         train_loader, X_train_num, X_train_cat, X_eval_num, X_eval_cat,
@@ -971,6 +978,10 @@ def main():
         min_beta=0.1, max_beta=1.0, lambd=0.95,
         device=device,
     )
+    end_time = time.time()
+    with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
+        time_msg = f'training time (latent): {end_time - start_time:.2f} seconds with {n_epochs} epochs'
+        f.write(time_msg)
     
     # training diffusion model
     train_z = get_input_train(ckpt_dir)
@@ -998,8 +1009,8 @@ def main():
             model, optimizer, scheduler, n_epochs, train_loader, ckpt_dir, device,
         )
         end_time = time.time()
-        with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
-            time_msg = f'training time: {end_time - start_time:.2f} seconds with {n_epochs} epochs'
+        with open(os.path.join(exp_dir, 'time.txt'), 'a') as f:
+            time_msg = f'\ntraining time (diffusion): {end_time - start_time:.2f} seconds with {n_epochs} epochs'
             f.write(time_msg)
         print()
         
