@@ -42,6 +42,7 @@ scikit-image
 
 # fairness
 fairlearn
+sdmetrics
 
 # data visualization
 seaborn
