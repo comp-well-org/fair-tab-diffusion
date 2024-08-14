@@ -33,7 +33,7 @@ lr_dis = 1e-4
 lambda_con = 1.0
 lambda_dis = 1.0 
 grad_clip = 1.0
-total_epochs_both = 1
+total_epochs_both = 3000
 
 [sample]
 mean_type = 'epsilon'

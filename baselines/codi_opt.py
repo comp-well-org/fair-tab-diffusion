@@ -38,7 +38,7 @@ def main():
     base_config_path = os.path.join(ARGS_DIR, dataset, f'{METHOD}', 'config.toml')
     
     def objective(trial):        
-        total_epochs_both = trial.suggest_categorical('total_epochs_both', [100, 500, 1000])
+        total_epochs_both = trial.suggest_categorical('total_epochs_both', [100, 500, 1000, 3000])
         n_timesteps = trial.suggest_categorical('n_timesteps', [100, 1000])
         
         base_config = lib.load_config(base_config_path)
