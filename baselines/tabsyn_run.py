@@ -972,7 +972,7 @@ def main():
     
     start_time = time.time()
     train_latent_model(
-        model, pre_encoder, pre_decoder, optimizer, scheduler, n_epochs,
+        model, pre_encoder, pre_decoder, optimizer, scheduler, 10000,
         train_loader, X_train_num, X_train_cat, X_eval_num, X_eval_cat,
         model_save_path, encoder_save_path, decoder_save_path, ckpt_dir,
         min_beta=0.1, max_beta=1.0, lambd=0.95,
@@ -980,7 +980,7 @@ def main():
     )
     end_time = time.time()
     with open(os.path.join(exp_dir, 'time.txt'), 'w') as f:
-        time_msg = f'training time (latent): {end_time - start_time:.2f} seconds with {n_epochs} epochs'
+        time_msg = f'training time (latent): {end_time - start_time:.2f} seconds with {10000} epochs'
         f.write(time_msg)
     
     # training diffusion model

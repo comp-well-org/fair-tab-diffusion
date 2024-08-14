@@ -26,7 +26,7 @@ METHOD = 'tabsyn'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='adult')
-    parser.add_argument('--n_trials', type=int, default=10)
+    parser.add_argument('--n_trials', type=int, default=1)
     parser.add_argument('--gpu_id', type=int, default=0)
     args = parser.parse_args()
     dataset = args.dataset
@@ -40,8 +40,8 @@ def main():
     
     def objective(trial):
         # NOTE: hyperparameters start here
-        lr = trial.suggest_float('lr', 0.001, 0.03, log=True)
-        n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
+        lr = trial.suggest_float('lr', 0.001, 0.002, log=False)
+        n_epochs = trial.suggest_categorical('n_epochs', [4000])
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
@@ -81,6 +81,12 @@ def main():
         return score
     
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    if n_trials == 1:
+        # rename dir many-exps to best
+        best_config_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'best')
+        many_exps_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'many-exps')
+        os.rename(many_exps_dir, best_config_dir)
+        return 0
     
     best_config_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'best')
     os.makedirs(best_config_dir, exist_ok=True)
