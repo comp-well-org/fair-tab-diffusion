@@ -41,7 +41,7 @@ def main():
     def objective(trial):
         # NOTE: hyperparameters start here
         lr = trial.suggest_float('lr', 0.001, 0.03, log=True)
-        n_epochs = trial.suggest_categorical('n_epochs', [2000, 4000])
+        n_epochs = trial.suggest_categorical('n_epochs', [100, 500, 1000])
         
         base_config = lib.load_config(base_config_path)
         exp_name = 'many-exps'
