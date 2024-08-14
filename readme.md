@@ -56,7 +56,6 @@ TBA
 - COMPASS
 - German Credit
 - Bank Marketing
-- Law School Admissions
 
 ### Baselines
 

@@ -17,7 +17,7 @@ decoder_l = 2
 
 [train]
 lr = 0.01
-n_epochs = 1000
+n_epochs = 1
 
 [sample]
 n_seeds = 3
