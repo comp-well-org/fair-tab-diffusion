@@ -737,6 +737,13 @@ def train_codi_model(
             best_loss = total_loss
             torch.save(model_con.state_dict(), f'{ckpt_dir}/model_con.pt')
             torch.save(model_dis.state_dict(), f'{ckpt_dir}/model_dis.pt')
+        
+        # if continous loss or discrete loss is nan, break the training 
+        if torch.isnan(loss_con).any() or torch.isnan(loss_dis).any():
+            print(f'training -> [{i+1}/{total_steps_both}], mloss: {loss_con.item():.4f}, dloss: {loss_dis.item():.4f}, tloss: {total_loss:.4f} -- best: {best_loss:.4f}')
+            print('loss is nan, break the training')
+            break
+        
         if i == total_steps_both - 1:
             print(f'training -> [{i+1}/{total_steps_both}], mloss: {loss_con.item():.4f}, dloss: {loss_dis.item():.4f}, tloss: {total_loss:.4f} -- best: {best_loss:.4f}')
         else:
@@ -852,7 +859,7 @@ def main():
     n_seeds = sample_config['n_seeds']
     
     # message
-    print(json.dumps(config, indent=4))
+    print(f'config file: {args.config}')
     print('-' * 80)
     
     # experimental directory

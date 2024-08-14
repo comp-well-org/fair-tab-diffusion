@@ -174,7 +174,7 @@ def main():
     knn = model_config['knn']
     
     # message
-    print(json.dumps(config, indent=4))
+    print(f'config file: {args.config}')
     print('-' * 80)
     
     # experimental directory

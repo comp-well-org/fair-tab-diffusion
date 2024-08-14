@@ -92,6 +92,13 @@ def main():
     
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
     
+    if n_trials == 1:
+        # rename dir many-exps to best
+        best_config_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'best')
+        many_exps_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'many-exps')
+        os.rename(many_exps_dir, best_config_dir)
+        return 0
+    
     best_config_dir = os.path.join(EXPS_PATH, dataset, f'{METHOD}', 'best')
     os.makedirs(best_config_dir, exist_ok=True)
     best_config_path = os.path.join(best_config_dir, 'config.toml')
