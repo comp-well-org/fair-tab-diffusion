@@ -42,7 +42,7 @@ attention_levels = [
 ]
 
 [train]
-n_epochs = 1000
+n_epochs = 1
 lr = 0.0003938516710354697
 weight_decay = 0.0
 max_non_improve = 500
@@ -50,7 +50,7 @@ max_non_improve = 500
 [sample]
 dist = "fair"
 n_samples = 10000
-batch_size = 1000
+batch_size = 2000
 n_seeds = 3
 
 [eval]
