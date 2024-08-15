@@ -72,7 +72,7 @@ def plot_col_distribution(
     dataset: str,
     config: dict,
     save_path: str = PLOTS_PATH,
-    num_plot: bool = False,
+    num_plot: bool = True,
     cat_plot: bool = True,
 ):  
     # intialization
@@ -100,7 +100,7 @@ def plot_col_distribution(
     data_dicts['real'] = read_data(
         data_dirs['real'], cat_col_names, label_col_name, d_types,
         original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
-        flag='train',
+        flag='test',
     )
     
     # synthetic data for every considered method
