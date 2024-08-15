@@ -45,3 +45,16 @@ session = "best"
 
 [methods.tabsyn]
 session = "best"
+
+[classifiers]
+mean = [
+    "Random Forest",
+    "SVM",
+    "MLP",
+    "XGBoost",
+    "CatBoost",
+    "Logistic Regression",
+]
+best = [
+    "CatBoost",
+]

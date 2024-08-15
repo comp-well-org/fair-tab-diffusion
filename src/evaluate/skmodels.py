@@ -8,7 +8,7 @@ from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
 
 def default_sk_clf(choice: str, seed=42):
-    max_iter = 1000
+    max_iter = 3000
     n_neighbors = 10
     max_depth = 28
     classic_clfs = {
@@ -18,7 +18,7 @@ def default_sk_clf(choice: str, seed=42):
         'AdaBoost': AdaBoostClassifier(),
         'XGBoost': XGBClassifier(random_state=seed),
         'CatBoost': CatBoostClassifier(allow_writing_files=False, random_seed=seed, silent=True),
-        'SVM': SVC(random_state=seed),
+        'SVM': SVC(random_state=seed, probability=True),
         'KNN': KNeighborsClassifier(n_neighbors=n_neighbors),
         'MLP': MLPClassifier(alpha=1, max_iter=max_iter, random_state=seed),
     }

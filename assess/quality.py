@@ -292,7 +292,7 @@ def main():
     print('-' * 80)
     
     # save results
-    save_dir = f'eval/{args.dataset}'
+    save_dir = f'eval/quality/{args.dataset}'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     
