@@ -4,8 +4,16 @@ n_seeds = 3
 
 [methods]
 considered = [
+    "codi",
     "fairsmote",
+    "fairtabddpm",
+    "fairtabgan",
+    "goggle",
+    "great",
+    "smote",
+    "stasy",
     "tabddpm",
+    "tabsyn",
 ]
 
 [methods.codi]
