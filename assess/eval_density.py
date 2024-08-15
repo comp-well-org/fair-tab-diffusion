@@ -2,10 +2,10 @@ import os
 import sys
 import warnings
 import argparse
-import numpy as np
 import pandas as pd
 from sdmetrics.reports.single_table import QualityReport, DiagnosticReport
-from datavis import DATASET_MAPPER, METHOD_MAPPER
+from sdmetrics.single_table import LogisticDetection
+from datavis import METHOD_MAPPER
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -16,7 +16,7 @@ parent = os.path.dirname(current)
 # adding the parent directory to the sys.path
 sys.path.append(parent)
 
-from constant import DB_PATH, EXPS_PATH, PLOTS_PATH
+from constant import DB_PATH, EXPS_PATH
 from lib import load_json, load_config, write_json
 
 warnings.filterwarnings('ignore')
@@ -71,6 +71,7 @@ def eval_density_method_seeds(dataset, config, save_dir):
             'shape': [],
             'trend': [],
             'quality': [],
+            'detection': [],
         }
         table_dict_temp[method] = {
             'shapes': [],
@@ -97,10 +98,12 @@ def eval_density_method_seeds(dataset, config, save_dir):
             shape_score = quality['Score'][0]
             trend_score = quality['Score'][1]
             quality_score = (shape_score + trend_score) / 2
+            detection_score = LogisticDetection.compute(real_data, syn_data, metadata)
             
             score_dict[method]['shape'].append(shape_score)
             score_dict[method]['trend'].append(trend_score)
             score_dict[method]['quality'].append(quality_score)
+            score_dict[method]['detection'].append(detection_score)
         
             shapes_table = qual_report.get_details(property_name='Column Shapes')
             trends_table = qual_report.get_details(property_name='Column Pair Trends')
