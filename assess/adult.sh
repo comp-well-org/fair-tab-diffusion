@@ -1,6 +1,6 @@
-for dataset in "german"
+for dataset in "adult"
 do
-    for source in "real" "synt"
+    for source in "smote" "stasy" "tabddpm" "tabsyn" "fairtabddpm" "real" "fairsmote" "fairtabgan" "goggle" "great"
     do
         for option in "best" "mean"
         do

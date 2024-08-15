@@ -23,7 +23,18 @@ from src.evaluate.skmodels import default_sk_clf
 warnings.filterwarnings('ignore')
 
 def evaluate_classifier_on_data(dataset, config, save_dir, option='best', rand='rand', source='real'):
-    assert source in {'real', 'synt'}
+    assert source in {
+        'real',
+        'fairsmote',
+        'fairtabgan',
+        'goggle',
+        'great',
+        'smote',
+        'stasy',
+        'tabddpm',
+        'tabsyn',
+        'fairtabddpm'
+    }
     assert option in {'best', 'mean'}
     assert rand in {'uniform', 'original'}
     data_dir = os.path.join(DB_PATH, dataset)
@@ -85,10 +96,11 @@ def evaluate_classifier_on_data(dataset, config, save_dir, option='best', rand='
                     clf.fit(x_train_rand, y_train)
                 else:
                     clf.fit(x_train, y_train)
-            elif source == 'synt':
+            else: 
+                session = config['methods'][source]['session']
                 random_seed = seed + i
                 print(f'working on {clf_choice} with seed {random_seed} on synthetic data')
-                synth_dir = os.path.join(EXPS_PATH, dataset, 'synthesis', f'{random_seed}')
+                synth_dir = os.path.join(EXPS_PATH, dataset, source, session, 'synthesis', f'{random_seed}')
                 x_syn = pd.read_csv(os.path.join(synth_dir, 'x_syn.csv'), index_col=0)
                 c_syn = pd.read_csv(os.path.join(synth_dir, 'y_syn.csv'), index_col=0)
                 y_syn = c_syn.iloc[:, 0]
@@ -133,9 +145,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='german')
     parser.add_argument('--config', type=str, default='./assess.toml')
-    parser.add_argument('--source', type=str, default='real', choices=['real', 'synt'])
+    parser.add_argument(
+        '--source', type=str, default='real', 
+        choices=[
+            'real', 'fairsmote', 'fairtabgan', 'goggle', 'great', 
+            'smote', 'stasy', 'tabddpm', 'tabsyn', 'fairtabddpm',
+        ],
+    )
     parser.add_argument('--option', type=str, default='best', choices=['best', 'mean'])
-    parser.add_argument('--rand', type=str, default='rand', choices=['uniform', 'original'])
+    parser.add_argument('--rand', type=str, default='original', choices=['uniform', 'original'])
 
     args = parser.parse_args()
     if args.config:
@@ -161,8 +179,9 @@ def main():
         args.dataset, config, save_dir, option=option, 
         rand=rand, source=source,
     )
-    write_json(metrics, os.path.join(save_dir, f'{source}_{option}_{rand}.json'))
-    print(f'saved results to {save_dir}/{source}_{option}_{rand}.json')
+    file_path = os.path.join(save_dir, f'{option}_{rand}_{source}.json')
+    write_json(metrics, file_path)
+    print(f'saved results to {file_path}')
     print(f'done!')
     print()
     
