@@ -22,7 +22,7 @@ from src.evaluate.skmodels import default_sk_clf
 
 warnings.filterwarnings('ignore')
 
-def evaluate_classifier_on_data(dataset, config, save_dir, option='best', rand='rand', source='real'):
+def evaluate_classifier_on_data(dataset, config, save_dir, option='best', dist='original', source='real'):
     assert source in {
         'real',
         'fairsmote',
@@ -36,7 +36,7 @@ def evaluate_classifier_on_data(dataset, config, save_dir, option='best', rand='
         'fairtabddpm'
     }
     assert option in {'best', 'mean'}
-    assert rand in {'uniform', 'original'}
+    assert dist in {'uniform', 'original'}
     data_dir = os.path.join(DB_PATH, dataset)
     
     x_train = pd.read_csv(os.path.join(data_dir, 'x_train.csv'), index_col=0)
@@ -92,9 +92,9 @@ def evaluate_classifier_on_data(dataset, config, save_dir, option='best', rand='
                 random_seed = seed + i
                 print(f'working on {clf_choice} with seed {random_seed} on real data')
                 clf = default_sk_clf(clf_choice, seed=random_seed)
-                if rand == 'rand':
+                if dist == 'uniform':
                     clf.fit(x_train_rand, y_train)
-                else:
+                elif dist == 'original':
                     clf.fit(x_train, y_train)
             else: 
                 session = config['methods'][source]['session']
@@ -112,9 +112,9 @@ def evaluate_classifier_on_data(dataset, config, save_dir, option='best', rand='
                     # print(x_syn_rand[col].value_counts())
                 
                 clf = default_sk_clf(clf_choice)
-                if rand == 'rand':
+                if dist == 'uniform':
                     clf.fit(x_syn_rand, y_syn)
-                else:
+                elif dist == 'original':
                     clf.fit(x_syn, y_syn)
             
             # training set
@@ -153,7 +153,7 @@ def main():
         ],
     )
     parser.add_argument('--option', type=str, default='best', choices=['best', 'mean'])
-    parser.add_argument('--rand', type=str, default='original', choices=['uniform', 'original'])
+    parser.add_argument('--dist', type=str, default='original', choices=['uniform', 'original'])
 
     args = parser.parse_args()
     if args.config:
@@ -163,7 +163,7 @@ def main():
     
     # divider
     print(f'evaluating classifiers on {args.dataset} dataset with {args.source} data')
-    print(f'using {args.option} classifier and {args.rand} distribution on sensitive attributes')
+    print(f'using {args.option} classifier and {args.dist} distribution on sensitive attributes')
     print('-' * 80)
     
     # save results
@@ -172,14 +172,14 @@ def main():
         os.makedirs(save_dir)
 
     option = args.option
-    rand = args.rand
+    dist = args.dist
     source = args.source
 
     metrics = evaluate_classifier_on_data(
         args.dataset, config, save_dir, option=option, 
-        rand=rand, source=source,
+        dist=dist, source=source,
     )
-    file_path = os.path.join(save_dir, f'{option}_{rand}_{source}.json')
+    file_path = os.path.join(save_dir, f'{option}_{dist}_{source}.json')
     write_json(metrics, file_path)
     print(f'saved results to {file_path}')
     print(f'done!')

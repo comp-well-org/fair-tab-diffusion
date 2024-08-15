@@ -203,6 +203,7 @@ def main():
             dataset=args.dataset,
             config=config,
         )
+        print(f'plots are saved in {PLOTS_PATH}/{args.dataset}')
 
 if __name__ == '__main__':
     main()

@@ -4,9 +4,9 @@ do
     do
         for option in "best" "mean"
         do
-            for rand in "original" "uniform"
+            for dist in "original" "uniform"
             do
-                python learning.py --dataset $dataset --source $source --option $option --rand $rand
+                python learning.py --dataset $dataset --source $source --option $option --dist $dist
             done
         done
     done
