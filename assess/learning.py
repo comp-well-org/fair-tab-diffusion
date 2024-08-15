@@ -33,7 +33,7 @@ def evaluate_classifier_on_data(dataset, config, save_dir, option='best', dist='
         'stasy',
         'tabddpm',
         'tabsyn',
-        'fairtabddpm'
+        'fairtabddpm',
     }
     assert option in {'best', 'mean'}
     assert dist in {'uniform', 'original'}
@@ -182,7 +182,7 @@ def main():
     file_path = os.path.join(save_dir, f'{option}_{dist}_{source}.json')
     write_json(metrics, file_path)
     print(f'saved results to {file_path}')
-    print(f'done!')
+    print('done!')
     print()
     
 if __name__ == '__main__':
