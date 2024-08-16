@@ -62,14 +62,14 @@ TBA
 The baseline methods we used in this project are as follows (sorted alphabetically):
 
 - [X] CoDi
-- [X] Fair Class Balancing (FCB)
-- [X] TabFairGAN
 - [X] Goggle
 - [X] GReaT
 - [X] SMOTE
 - [X] STaSy
 - [X] TabDDPM
 - [X] TabSyn
+- [X] Fair Class Balancing (FCB)
+- [X] TabFairGAN
 
 ## Contact
 
