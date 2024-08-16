@@ -69,7 +69,7 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 - [X] TabDDPM
 - [X] TabSyn
 - [X] Fair Class Balancing (FCB)
-- [X] TabFairGAN
+- [X] FairTGAN
 
 ## Contact
 
