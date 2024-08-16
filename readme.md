@@ -62,8 +62,8 @@ TBA
 The baseline methods we used in this project are as follows (sorted alphabetically):
 
 - [X] CoDi
-- [X] Fair SMOTE
-- [X] Fair Tabular GAN
+- [X] Fair Class Balancing (FCB)
+- [X] TabFairGAN
 - [X] Goggle
 - [X] GReaT
 - [X] SMOTE
