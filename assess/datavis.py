@@ -23,8 +23,8 @@ warnings.filterwarnings('ignore')
 METHOD_MAPPER = {
     'real': 'Real',
     'codi': 'CoDi',
-    'fairsmote': 'FairSMOTE',
-    'fairtabgan': 'FairTabGAN',
+    'fairsmote': 'FairCB',
+    'fairtabgan': 'FairTGAN',
     'goggle': 'Goggle',
     'great': 'GReaT',
     'smote': 'SMOTE',
