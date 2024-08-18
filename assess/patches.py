@@ -61,13 +61,17 @@ def plot_fair_dist_patches(
         # synthetic data for every considered method
         considered = config['methods']['considered']
         for method in considered:
-            session = config['methods'][method]['session']
-            data_dirs[method] = os.path.join(EXPS_PATH, dataset, method, session, 'synthesis', str(seed))
-            data_dicts[method] = read_data(
-                data_dirs[method], cat_col_names, label_col_name, d_types, 
-                original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
-                flag='syn',
-            )
+            if method == 'fairtabddpm':
+                session = config['methods'][method]['session']
+                data_dirs[method] = os.path.join(EXPS_PATH, dataset, method, session, 'synthesis', str(seed))
+                data_dicts[method] = read_data(
+                    data_dirs[method], cat_col_names, label_col_name, d_types, 
+                    original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
+                    flag='syn',
+                )
+            else:
+                continue
+            
         # plot sensitive attributes in the real and synthetic data
         real_sens = {}
         synthetic_sens = {}
