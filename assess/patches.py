@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from datavis import read_data, clean_nested_dict, DATASET_MAPPER
+from datavis import read_data, clean_nested_dict, DATASET_MAPPER, METHOD_MAPPER
 
 # getting the name of the directory where the this file is present
 current = os.path.dirname(os.path.realpath(__file__))
@@ -25,6 +25,7 @@ def plot_fair_dist_patches(
     datasets: list[str],
     config: dict,
     save_path: str = PLOTS_PATH,
+    baseline: str = 'fairtabddpm',
 ):  
     # intialization
     data_dirs = {}
@@ -61,7 +62,7 @@ def plot_fair_dist_patches(
         # synthetic data for every considered method
         considered = config['methods']['considered']
         for method in considered:
-            if method == 'fairtabddpm':
+            if method == baseline:
                 session = config['methods'][method]['session']
                 data_dirs[method] = os.path.join(EXPS_PATH, dataset, method, session, 'synthesis', str(seed))
                 data_dicts[method] = read_data(
@@ -77,7 +78,7 @@ def plot_fair_dist_patches(
         synthetic_sens = {}
         for s_col in sst_col_names:
             real_sens[s_col] = data_dicts['real'][s_col].value_counts(normalize=True).to_dict()
-            synthetic_sens[s_col] = data_dicts['fairtabddpm'][s_col].value_counts(normalize=True).to_dict()
+            synthetic_sens[s_col] = data_dicts[baseline][s_col].value_counts(normalize=True).to_dict()
         
         title = DATASET_MAPPER[dataset]
         print(f'Plotting {title}...')
@@ -110,7 +111,8 @@ def plot_fair_dist_patches(
                         
         axs = subfigs[datasets.index(dataset)].subplots(2, 1, sharex=True)
         axs[0].set_title('Real', loc='right', color='blue', fontsize=6 + 14)
-        axs[1].set_title('Synthetic', loc='right', color='red', fontsize=6 + 14)
+        method_str = METHOD_MAPPER[baseline]
+        axs[1].set_title(method_str, loc='right', color='red', fontsize=6 + 14)
         
         # plot real distribution
         real_dfs = []
@@ -164,10 +166,11 @@ def plot_fair_dist_patches(
         axs[0].set_title(title, fontsize=6 + 14)
     
     # add a common title
-    fig.suptitle('Sensitive Attribute Distribution in Real and Synthetic Data', fontsize=6 + 16)
+    baseline_str = METHOD_MAPPER[baseline]
+    fig.suptitle(f'Sensitive Attribute Distribution in Real and Synthetic Data with {baseline_str}', fontsize=6 + 16)
     
     # save figure
-    file_name = 'real_vs_synthetic_sens_attr_dist'
+    file_name = f'real_vs_synthetic_sens_attr_dist_{baseline}'
     fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
 
 if __name__ == '__main__':
@@ -178,4 +181,6 @@ if __name__ == '__main__':
     datasets = ['adult', 'bank', 'compass']
     
     # plot the fair distribution
-    plot_fair_dist_patches(datasets, config)
+    plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
+    plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
+    plot_fair_dist_patches(datasets, config, baseline='fairsmote')
