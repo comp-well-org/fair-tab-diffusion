@@ -39,6 +39,10 @@ def plot_fair_dist_patches(
     # combine all the figures by creating a new figure
     fig = plt.figure(layout='constrained', figsize=(30, 10))
     subfigs = fig.subfigures(1, len(datasets), wspace=0.05)
+    # let subfigs share the same y axis
+    # for subfig in subfigs:
+    #     subfig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
+    #     subfig.subplots(2, 1, sharey=True)
     
     for dataset in datasets:
         # real data
