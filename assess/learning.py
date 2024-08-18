@@ -34,6 +34,7 @@ def evaluate_classifier_on_data(dataset, config, save_dir, option='best', dist='
         'tabddpm',
         'tabsyn',
         'fairtabddpm',
+        'codi',
     }
     assert option in {'best', 'mean'}
     assert dist in {'uniform', 'original'}
@@ -150,6 +151,7 @@ def main():
         choices=[
             'real', 'fairsmote', 'fairtabgan', 'goggle', 'great', 
             'smote', 'stasy', 'tabddpm', 'tabsyn', 'fairtabddpm',
+            'codi',
         ],
     )
     parser.add_argument('--option', type=str, default='best', choices=['best', 'mean'])

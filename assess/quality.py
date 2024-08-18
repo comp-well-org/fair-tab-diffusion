@@ -74,7 +74,7 @@ def convert_ord_to_onehot(data, data_desc):
     data_mat = torch.tensor(data_mat, dtype=torch.float32).to(device)
     return data_mat
 
-def compute_dcr(train_data, test_data, syn_data, batch_size=1024):
+def compute_dcr(train_data, test_data, syn_data, batch_size=512):
     dcrs_real = []
     dcrs_test = []
     
