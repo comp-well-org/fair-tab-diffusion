@@ -81,6 +81,7 @@ def read_data(
     
     return data
 
+# NOTE: this function is not used in the main function
 def plot_attribute_dist(
     real: dict, synthetic: dict, title: str = 'Real vs Synthetic', path: str = None,
 ):
@@ -109,22 +110,7 @@ def plot_attribute_dist(
             for k, v in value.items():
                 new_value[f'{suffix} {k}'] = v
             synthetic[suffix] = new_value
-    #     # rename the keys
-    #     for key in real:
-    #         value = real[key]
-    #         new_value = {}
-    #         for k, v in value.items():
-    #             new_value[f'{k} (Real)'] = v
-    #         real[key] = new_value
-        
-    # initialize figure and subplots
-    # n_attributes = len(real)  
-    # if n_attributes == 1:
-    #     figsize = (10, 8)
-    # elif n_attributes == 2:
-    #     figsize = (16, 8)
-    # elif n_attributes == 3:
-    #     figsize = (16, 8)
+
     n_unq_total = sum([len(real[key]) for key in real]) 
     figsize = (n_unq_total * 2, 8)
     fig, axs = plt.subplots(2, 1, figsize=figsize, sharex=True)
@@ -322,11 +308,11 @@ def plot_col_distribution(
     # print(real_sens)
     # print(synthetic_sens)
     
-    # plot attribute distribution
-    plot_attribute_dist(
-        real=real_sens, synthetic=synthetic_sens, title=f'Senstive Feature Imbalance in {DATASET_MAPPER[dataset]}',
-        path=plot_dir,
-    )
+    # # plot attribute distribution
+    # plot_attribute_dist(
+    #     real=real_sens, synthetic=synthetic_sens, title=f'Senstive Feature Imbalance in {DATASET_MAPPER[dataset]}',
+    #     path=plot_dir,
+    # )
 
 def main():
     parser = argparse.ArgumentParser()
@@ -349,8 +335,8 @@ def main():
             dataset=args.dataset,
             config=config,
             save_path=PLOTS_PATH,
-            num_plot=False,
-            cat_plot=False,
+            num_plot=True,
+            cat_plot=True,
         )
         print(f'plots are saved in {PLOTS_PATH}/{args.dataset}')
 
