@@ -178,8 +178,8 @@ def plot_fair_dist_patches(
 def plot_fair_contingency_patches(
     datasets: list[str],  
     config: dict,
+    baselines: list[str],
     save_path: str = PLOTS_PATH,
-    baselines: list[str] = ['fairtabddpm', 'fairtabgan', 'fairsmote'],
 ):
     seed = config['exp']['seed']
     data_dirs = {}
@@ -306,4 +306,4 @@ if __name__ == '__main__':
     # plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
     # plot_fair_dist_patches(datasets, config, baseline='fairsmote')
     
-    plot_fair_contingency_patches(datasets, config)
+    plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm', 'fairtabgan', 'fairsmote'])
