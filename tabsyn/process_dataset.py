@@ -212,7 +212,6 @@ def process_data(name):
         metadata['columns'][i] = {}
         metadata['columns'][i]['sdtype'] = 'categorical'
 
-
     if task_type == 'regression':
         
         for i in target_col_idx:
