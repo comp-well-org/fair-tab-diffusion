@@ -167,6 +167,8 @@ def plot_fair_dist_patches(
     
     # add a common title
     baseline_str = METHOD_MAPPER[baseline]
+    if baseline_str == 'Ours':
+        baseline_str = 'Our Method'
     fig.suptitle(f'Sensitive Attribute Distribution in Real and Synthetic Data with {baseline_str}', fontsize=6 + 16)
     
     # save figure
@@ -383,8 +385,8 @@ if __name__ == '__main__':
     datasets = ['adult', 'bank', 'compass']
     
     # # plot the fair distribution
-    # plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
+    plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
     # plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
     # plot_fair_dist_patches(datasets, config, baseline='fairsmote')
     
-    plot_fair_contingency_patches(datasets, config)
+    # plot_fair_contingency_patches(datasets, config)
