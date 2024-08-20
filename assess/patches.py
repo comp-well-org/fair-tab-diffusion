@@ -39,10 +39,6 @@ def plot_fair_dist_patches(
     # combine all the figures by creating a new figure
     fig = plt.figure(layout='constrained', figsize=(30, 10))
     subfigs = fig.subfigures(1, len(datasets), wspace=0.05)
-    # let subfigs share the same y axis
-    # for subfig in subfigs:
-    #     subfig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-    #     subfig.subplots(2, 1, sharey=True)
     
     for dataset in datasets:
         # real data
@@ -177,6 +173,208 @@ def plot_fair_dist_patches(
     file_name = f'real_vs_synthetic_sens_attr_dist_{baseline}'
     fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
 
+# def plot_fair_contingency_patches(
+#     datasets: list[str],  
+#     config: dict,
+#     save_path: str = PLOTS_PATH,
+#     baselines: list[str] = ['fairtabddpm', 'fairtabgan', 'fairsmote'],
+# ):
+#     # read real and synthetic data
+#     # cols = s1 + s2 + s3 ... 
+#     # rows = method1 + method2 + method3 ... 
+#     data_dirs = {}
+#     data_dicts = {}
+#     all_dfs = {}
+#     # n_rows = len(baselines) + 1
+#     n_rows = 1
+#     n_cols = 0
+#     for dataset in datasets:
+#         # real data
+#         data_dirs['real'] = os.path.join(DB_PATH, dataset)
+#         data_desc = load_json(os.path.join(data_dirs['real'], 'desc.json'))
+#         cat_col_names = data_desc['cat_col_names']
+#         sst_col_names = data_desc['sst_col_names']
+#         label_col_name = data_desc['label_col_name']
+#         cat_encoder = load_encoder(os.path.join(data_dirs['real'], 'cat_encoder.skops'))
+#         label_encoder = load_encoder(os.path.join(data_dirs['real'], 'label_encoder.skops'))
+#         d_types = data_desc['d_types']
+        
+#         n_cols += len(sst_col_names)
+
+#         # have a dictionary to store data for every method
+#         data_dicts['real'] = read_data(
+#             data_dirs['real'], cat_col_names, label_col_name, d_types,
+#             original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
+#             flag='test',
+#         )
+#         dfs = []
+#         for sst in sst_col_names:
+#             df = data_dicts['real'][[sst, label_col_name]]
+#             contingency_table = pd.crosstab(df[sst], df[label_col_name])
+#             dfs.append(contingency_table)
+        
+#         all_dfs[DATASET_MAPPER[dataset]] = dfs
+        
+#     print(all_dfs.keys())
+    
+#     fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 8, n_rows * 5))
+#     offest = 0
+#     count = 0
+#     for key, value in all_dfs.items():
+#         # print(f'Offset: {offest}')
+#         for i, df in enumerate(value):
+#             ax = axs[i + offest]
+#             annot = []
+#             for index in list(df.index):
+#                 temp = []
+#                 for column in list(df.columns):
+#                     num = df.loc[index, column]
+#                     cell_name = f'{index}\n{column}\n{num}'
+#                     temp.append(cell_name)
+#                 annot.append(temp)
+
+#             annot = np.array(annot)
+#             sns.heatmap(
+#                 df, annot=annot, fmt='', cmap='coolwarm', ax=ax, xticklabels=False, yticklabels=False,
+#             )
+#             count += 1
+            
+#             # set annotation font size
+#             for t in ax.texts:
+#                 t.set_fontsize(12)
+            
+#             # set font size title
+#             ax.set_title(f'{key}', fontsize=6 + 14)
+#             # change font size of the x and y labels
+#             current_x_label = ax.get_xlabel()
+#             current_y_label = ax.get_ylabel()
+#             ax.set_xlabel(current_x_label, fontsize=6 + 12)
+#             ax.set_ylabel(current_y_label, fontsize=6 + 12)
+
+#         offest = count
+    
+#     plt.tight_layout()
+    
+#     # save figure
+#     plot_dir = os.path.join(save_path)
+#     if not os.path.exists(plot_dir):
+#         os.makedirs(plot_dir)
+    
+#     file_name = 'contingency'
+#     fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
+    
+def plot_fair_contingency_patches(
+    datasets: list[str],  
+    config: dict,
+    save_path: str = PLOTS_PATH,
+    baselines: list[str] = ['fairtabddpm', 'fairtabgan', 'fairsmote'],
+):
+    seed = config['exp']['seed']
+    data_dirs = {}
+    data_dicts = {}
+    all_dfs = {}
+    all_dfs['real'] = {}
+    for baseline in baselines:
+        all_dfs[baseline] = {}
+    
+    n_rows = len(baselines) + 1
+    n_cols = 0
+    for dataset in datasets:
+        # real data
+        data_dirs['real'] = os.path.join(DB_PATH, dataset)
+        data_desc = load_json(os.path.join(data_dirs['real'], 'desc.json'))
+        cat_col_names = data_desc['cat_col_names']
+        sst_col_names = data_desc['sst_col_names']
+        label_col_name = data_desc['label_col_name']
+        cat_encoder = load_encoder(os.path.join(data_dirs['real'], 'cat_encoder.skops'))
+        label_encoder = load_encoder(os.path.join(data_dirs['real'], 'label_encoder.skops'))
+        d_types = data_desc['d_types']
+        
+        n_cols += len(sst_col_names)
+        
+        data_dicts['real'] = read_data(
+            data_dirs['real'], cat_col_names, label_col_name, d_types,
+            original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
+            flag='test',
+        )
+        dfs = []
+        for sst in sst_col_names:
+            df = data_dicts['real'][[sst, label_col_name]]
+            contingency_table = pd.crosstab(df[sst], df[label_col_name])
+            dfs.append(contingency_table)
+        all_dfs['real'][DATASET_MAPPER[dataset]] = dfs
+        
+        # synthetic data for every considered method
+        for method in baselines:
+            session = config['methods'][method]['session']
+            data_dirs[method] = os.path.join(EXPS_PATH, dataset, method, session, 'synthesis', str(seed))
+            data_dicts[method] = read_data(
+                data_dirs[method], cat_col_names, label_col_name, d_types, 
+                original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
+                flag='syn',
+            )
+            dfs = []
+            for sst in sst_col_names:
+                df = data_dicts[method][[sst, label_col_name]]
+                contingency_table = pd.crosstab(df[sst], df[label_col_name])
+                dfs.append(contingency_table)
+            all_dfs[method][DATASET_MAPPER[dataset]] = dfs
+    
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 12, n_rows * 9))
+    for row in range(n_rows):
+        if row == 0:
+            key = 'real'
+        else:
+            key = baselines[row - 1]
+        method_str = METHOD_MAPPER[key]
+        offest = 0
+        count = 0
+        for i, value in all_dfs[key].items():
+            for j, df in enumerate(value):
+                ax = axs[row, j + offest]
+                annot = []
+                for index in list(df.index):
+                    temp = []
+                    for column in list(df.columns):
+                        num = df.loc[index, column]
+                        cell_name = f'{index}\n{column}\n{num}'
+                        temp.append(cell_name)
+                    annot.append(temp)
+
+                annot = np.array(annot)
+                sns.heatmap(
+                    df, annot=annot, fmt='', cmap='coolwarm', ax=ax, xticklabels=False, yticklabels=False,
+                )
+                count += 1
+                
+                # set annotation font size
+                for t in ax.texts:
+                    t.set_fontsize(12)
+                
+                # set font size title
+                ax.set_title(f'{i} ({method_str})', fontsize=6 + 14)
+                # change font size of the x and y labels
+                current_x_label = ax.get_xlabel()
+                current_y_label = ax.get_ylabel()
+                ax.set_xlabel(current_x_label, fontsize=6 + 12)
+                ax.set_ylabel(current_y_label, fontsize=6 + 12)
+                
+            offest = count
+    
+    # set a common title
+    common_title = 'Heatmap of Contingency Tables for Real and Synthetic Data'
+    fig.suptitle(common_title, fontsize=10 + 16, y=0.998)
+    
+    plt.tight_layout()
+    
+    # save figure
+    plot_dir = os.path.join(save_path)
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
+    
+    file_name = 'contingency'
+    fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
+
 if __name__ == '__main__':
     # load the configuration file
     config = load_config('./assess.toml')
@@ -184,7 +382,9 @@ if __name__ == '__main__':
     # get the datasets
     datasets = ['adult', 'bank', 'compass']
     
-    # plot the fair distribution
-    plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
-    plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
-    plot_fair_dist_patches(datasets, config, baseline='fairsmote')
+    # # plot the fair distribution
+    # plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
+    # plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
+    # plot_fair_dist_patches(datasets, config, baseline='fairsmote')
+    
+    plot_fair_contingency_patches(datasets, config)
