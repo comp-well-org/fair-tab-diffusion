@@ -455,7 +455,8 @@ class Goggle(nn.Module):
     def sample(self, count):
         with torch.no_grad():
             mu = torch.zeros(self.input_dim)
-            sigma = torch.ones(self.input_dim) * 1000
+            # sigma = torch.ones(self.input_dim) * 1000
+            sigma = torch.ones(self.input_dim)
             q = torch.distributions.Normal(mu, sigma)
             z = q.rsample(sample_shape=torch.Size([count])).squeeze().to(self.device)
 
