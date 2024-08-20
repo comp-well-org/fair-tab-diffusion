@@ -28,6 +28,17 @@ class TabDataDesc:
         eval_num: int,
         test_num: int,
         d_types: dict,
+        name: str,
+        task_type: str,
+        header: str,
+        column_names: list[str],
+        num_col_idx: list[int],
+        cat_col_idx: list[int],
+        target_col_idx: list[int],
+        file_type: str,
+        train_path: str,
+        eval_path: str,
+        test_path: str,
     ) -> None:
         """Initialize an object for dataset description.
         
@@ -56,6 +67,17 @@ class TabDataDesc:
             eval_num: number of validation samples.
             test_num: number of test samples.
             d_types: data types for each column.
+            name: name of the dataset.
+            task_type: type of the task.
+            header: whether the dataset has a header.
+            column_names: names of the columns.
+            num_col_idx: indices of numerical columns.
+            cat_col_idx: indices of categorical columns.
+            target_col_idx: index of the target column.
+            file_type: type of the file.
+            train_path: path to the training data file.
+            eval_path: path to the validation data file.
+            test_path: path to the test data file.
         """
         self._desc = {}
         self._desc['dataset_name'] = dataset_name
@@ -82,6 +104,17 @@ class TabDataDesc:
         self._desc['eval_num'] = eval_num
         self._desc['test_num'] = test_num
         self._desc['d_types'] = d_types
+        self._desc['name'] = name
+        self._desc['task_type'] = task_type
+        self._desc['header'] = header
+        self._desc['column_names'] = column_names
+        self._desc['num_col_idx'] = num_col_idx
+        self._desc['cat_col_idx'] = cat_col_idx
+        self._desc['target_col_idx'] = target_col_idx
+        self._desc['file_type'] = file_type
+        self._desc['train_path'] = train_path
+        self._desc['eval_path'] = eval_path
+        self._desc['test_path'] = test_path
     
     @property
     def desc(self) -> str:

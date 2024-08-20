@@ -64,6 +64,11 @@ def process_dataset(
     
     d_types = {col: str(x_train[col].dtype) for col in x_train.columns}
     d_types[label_col_name] = str(y_train[label_col_name].dtype)
+    
+    unreordered_cols = list(data_all_cp.columns)
+    num_col_idx = [unreordered_cols.index(name) for name in num_columns]
+    cat_col_idx = [unreordered_cols.index(name) for name in cat_columns]
+    target_col_idx = [unreordered_cols.index(label_col_name)]
 
     data_desc = TabDataDesc(
         dataset_name=dataset_name,
@@ -90,6 +95,17 @@ def process_dataset(
         eval_num=len(x_eval),
         test_num=len(x_test),
         d_types=d_types,
+        name=dataset_name,
+        task_type='binclass',
+        header='infer',
+        column_names=col_names + [label_col_name],
+        num_col_idx=num_col_idx,
+        cat_col_idx=cat_col_idx,
+        target_col_idx=target_col_idx,
+        file_type='csv',
+        train_path=f'{dir_path}/d_train.csv',
+        eval_path=f'{dir_path}/d_eval.csv',
+        test_path=f'{dir_path}/d_test.csv',
     )
     
     if dir_path:

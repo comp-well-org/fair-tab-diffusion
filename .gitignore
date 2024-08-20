@@ -9,3 +9,5 @@ adapted
 public-tabular-datasets
 fair-tab-diffusion-exps
 ckpt
+tabsyn/data
+tabsyn/synthetic
