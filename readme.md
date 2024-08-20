@@ -95,8 +95,6 @@ Automate the experiments and evaluations:
 - [ ] Refactor and reorganize `assess/present.ipynb` with functional programming
 - [ ] Rewrite all the code in `assess` directory with functional programming
 
-python goggle_run.py --config ../fair-tab-diffusion-exps/adult/goggle/best/config.toml --exp_name best
+Correct the errors:
 
-python goggle_run.py --config ../fair-tab-diffusion-exps/bank/goggle/best/config.toml --exp_name best
-
-python goggle_run.py --config ../fair-tab-diffusion-exps/compass/goggle/best/config.toml --exp_name best
+- [ ] The implementation of TabSyn in `baselines` is incorrect

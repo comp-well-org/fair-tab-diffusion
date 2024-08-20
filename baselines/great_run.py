@@ -500,7 +500,7 @@ def main():
             time_msg = f'training time: {end_time - start_time:.2f} seconds with {n_epochs} epochs'
             f.write(time_msg)
         print()
-            
+
     if args.sample:
         # sampling
         great.load_finetuned_model(f'{ckpt_dir}/model.pt')
