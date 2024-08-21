@@ -1,6 +1,7 @@
 for dataset in "compass"
 do
     for source in "smote" "stasy" "tabddpm" "tabsyn" "fairtabddpm" "real" "fairsmote" "fairtabgan" "goggle" "great" "codi"
+    # for source in "tabsyn"
     do
         for option in "best" "mean"
         do

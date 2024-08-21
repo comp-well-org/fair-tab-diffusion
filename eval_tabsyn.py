@@ -18,7 +18,11 @@ from constant import DB_PATH, EXPS_PATH
 
 def main():
     # configs
-    dataset = 'german'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='adult')
+    args = parser.parse_args()
+    dataset = args.dataset
+    
     exp_name = 'best'
     config_path = os.path.join(EXPS_PATH, dataset, 'tabsyn', exp_name, 'config.toml')
     
@@ -35,10 +39,6 @@ def main():
         exp_config['method'],
         exp_name,
     )
-    copy_file(
-        os.path.join(exp_dir), 
-        config,
-    )
     
     seed = exp_config['seed']
     n_seeds = sample_config['n_seeds']
@@ -48,6 +48,7 @@ def main():
     data_desc = load_json(os.path.join(dataset_dir, 'desc.json'))
     cat_encoder = sio.load(os.path.join(dataset_dir, 'cat_encoder.skops'))
     label_encoder = sio.load(os.path.join(dataset_dir, 'label_encoder.skops'))
+    d_all = pd.read_csv(os.path.join(dataset_dir, 'd_all.csv'), index_col=0)
     
     # evaluate classifiers trained on synthetic data
     synth_dir_list = []
@@ -57,6 +58,34 @@ def main():
             synth_dir_list.append(synth_dir)
 
     sst_col_names = data_desc['sst_col_names']
+    num_col_names = data_desc['num_col_names']
+    cat_col_names = data_desc['cat_col_names']
+    label_col_name = data_desc['label_col_name']
+    
+    for i in range(n_seeds):
+        random_seed = seed + i
+        synth_dir = os.path.join(exp_dir, f'synthesis/{random_seed}')
+        
+        d_syn = pd.read_csv(os.path.join(synth_dir, 'd_syn.csv'))
+        # change d_syn column names to match d_all
+        d_syn.columns = d_all.columns
+        # save to csv   
+        d_syn.to_csv(os.path.join(synth_dir, 'd_syn.csv'), index=False)
+        
+        x_syn = d_syn[num_col_names + cat_col_names]
+        y_syn = d_syn[[label_col_name]].astype(str)
+        
+        x_syn_cat = x_syn[cat_col_names].astype(str)
+        x_syn_cat = cat_encoder.transform(x_syn_cat)
+        x_syn_cat = pd.DataFrame(x_syn_cat, columns=cat_col_names)
+        
+        x_syn = pd.concat([x_syn[num_col_names], x_syn_cat], axis=1)
+        y_syn = label_encoder.transform(y_syn)
+        y_syn = pd.DataFrame(y_syn, columns=[label_col_name])
+
+        x_syn.to_csv(os.path.join(synth_dir, 'x_syn.csv'), index=True)
+        y_syn.to_csv(os.path.join(synth_dir, 'y_syn.csv'), index=True)
+    
     metric = evaluate_syn_data(
         data_dir=os.path.join(data_config['path'], data_config['name']),
         exp_dir=exp_dir,
