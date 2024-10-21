@@ -110,9 +110,9 @@ def plot_fair_dist_patches(
                 synthetic[suffix] = new_value
                         
         axs = subfigs[datasets.index(dataset)].subplots(2, 1, sharex=True)
-        axs[0].set_title('Real', loc='right', color='blue', fontsize=6 + 18)
+        axs[0].set_title('Real', loc='right', color='blue', fontsize=6 + 14)
         method_str = METHOD_MAPPER[baseline]
-        axs[1].set_title(method_str, loc='right', color='red', fontsize=6 + 18)
+        axs[1].set_title(method_str, loc='right', color='red', fontsize=6 + 14)
         
         # plot real distribution
         real_dfs = []
@@ -124,7 +124,7 @@ def plot_fair_dist_patches(
         ax0 = sns.barplot(data=real_all, x='item', y='Percentage', hue='category', ax=axs[0], legend=True)
         # show percentage on top of the bars
         for p in ax0.containers:
-            ax0.bar_label(p, label_type='edge', fontsize=24, fmt='%.3f')
+            ax0.bar_label(p, label_type='edge', fontsize=6 + 12, fmt='%.4f')
     
         # plot synthetic distribution
         synthetic_dfs = []
@@ -138,7 +138,7 @@ def plot_fair_dist_patches(
         )
         # show percentage on top of the bars
         for p in ax1.containers:
-            ax1.bar_label(p, label_type='edge', fontsize=24, fmt='%.3f')
+            ax1.bar_label(p, label_type='edge', fontsize=6 + 12, fmt='%.4f')
 
         # rotate x labels
         x = np.arange(len(real_all['item']))
@@ -147,7 +147,7 @@ def plot_fair_dist_patches(
         
         # add legend
         handles, labels = axs[0].get_legend_handles_labels()
-        axs[0].legend(handles, labels, fontsize=6 + 18)
+        axs[0].legend(handles, labels, fontsize=6 + 12)
         
         # remove legned from the first subplot and x labels from the second
         axs[1].set_xlabel('')
@@ -158,66 +158,73 @@ def plot_fair_dist_patches(
             for side in ('right', 'top'):
                 sp = ax.spines[side]
                 sp.set_visible(False)
-            ax.tick_params(axis='both', which='major', labelsize=18)
+            ax.tick_params(axis='both', which='major', labelsize=2 + 12)
             # set y
-            ax.set_ylabel('Percentage', fontsize=6 + 18)
+            ax.set_ylabel('Percentage', fontsize=6 + 12)
 
         # add title as the name of the dataset
-        axs[0].set_title(title, fontsize=6 + 18)
+        axs[0].set_title(title, fontsize=6 + 14)
     
     # add a common title
     baseline_str = METHOD_MAPPER[baseline]
     if baseline_str == 'Ours':
         baseline_str = 'Our Method'
-    fig.suptitle(f'Sensitive Attribute Distribution in Real and Synthetic Data with {baseline_str}', fontsize=6 + 24)
+    fig.suptitle(f'Sensitive Attribute Distribution in Real and Synthetic Data with {baseline_str}', fontsize=6 + 16)
     
     # save figure
     file_name = f'real_vs_synthetic_sens_attr_dist_{baseline}'
     fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
     
-def plot_fair_contingency_patches(
-    datasets: list[str],  
+def plot_stacked_bars(
+    dataset: str,
     config: dict,
-    baselines: list[str],
+    baseline: str,
     save_path: str = PLOTS_PATH,
 ):
     seed = config['exp']['seed']
     data_dirs = {}
     data_dicts = {}
-    all_dfs = {}
-    all_dfs['real'] = {}
-    for baseline in baselines:
-        all_dfs[baseline] = {}
     
-    n_rows = len(baselines) + 1
-    n_cols = 0
-    for dataset in datasets:
-        # real data
-        data_dirs['real'] = os.path.join(DB_PATH, dataset)
-        data_desc = load_json(os.path.join(data_dirs['real'], 'desc.json'))
-        cat_col_names = data_desc['cat_col_names']
-        sst_col_names = data_desc['sst_col_names']
-        label_col_name = data_desc['label_col_name']
-        cat_encoder = load_encoder(os.path.join(data_dirs['real'], 'cat_encoder.skops'))
-        label_encoder = load_encoder(os.path.join(data_dirs['real'], 'label_encoder.skops'))
-        d_types = data_desc['d_types']
+    # intialization
+    data_dirs = {}
+    seed = config['exp']['seed']
+    
+    # save path
+    plot_dir = os.path.join(save_path)
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
         
-        n_cols += len(sst_col_names)
+    # read the data
+    data_dirs['real'] = os.path.join(DB_PATH, dataset)
+    data_desc = load_json(os.path.join(data_dirs['real'], 'desc.json'))
+    
+    # save path
+    plot_dir = os.path.join(save_path)
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
         
-        data_dicts['real'] = read_data(
-            data_dirs['real'], cat_col_names, label_col_name, d_types,
-            original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
-            flag='test',
-        )
-        dfs = []
-        for sst in sst_col_names:
-            df = data_dicts['real'][[sst, label_col_name]]
-            contingency_table = pd.crosstab(df[sst], df[label_col_name], normalize=True)
-            dfs.append(contingency_table)
-        all_dfs['real'][DATASET_MAPPER[dataset]] = dfs
-        
-        # synthetic data for every considered method
-        for method in baselines:
+    # have a dictionary to store data for every method
+    data_dicts = {}
+    
+    # real data
+    data_dirs['real'] = os.path.join(DB_PATH, dataset)
+    data_desc = load_json(os.path.join(data_dirs['real'], 'desc.json'))
+    cat_col_names = data_desc['cat_col_names']
+    sst_col_names = data_desc['sst_col_names']
+    label_col_name = data_desc['label_col_name']
+    cat_encoder = load_encoder(os.path.join(data_dirs['real'], 'cat_encoder.skops'))
+    label_encoder = load_encoder(os.path.join(data_dirs['real'], 'label_encoder.skops'))
+    d_types = data_desc['d_types']
+    data_dicts['real'] = read_data(
+        data_dirs['real'], cat_col_names, label_col_name, d_types,
+        original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
+        flag='test',
+    )
+    
+    # synthetic data for every considered method
+    considered = config['methods']['considered']
+    for method in considered:
+        if method == baseline:
             session = config['methods'][method]['session']
             data_dirs[method] = os.path.join(EXPS_PATH, dataset, method, session, 'synthesis', str(seed))
             data_dicts[method] = read_data(
@@ -225,93 +232,64 @@ def plot_fair_contingency_patches(
                 original=True, cat_encoder=cat_encoder, label_encoder=label_encoder,
                 flag='syn',
             )
-            
-            dfs = []
-            for sst in sst_col_names:
-                df = data_dicts[method][[sst, label_col_name]]
-                contingency_table = pd.crosstab(df[sst], df[label_col_name], normalize=True)
-                dfs.append(contingency_table)
-            all_dfs[method][DATASET_MAPPER[dataset]] = dfs
-    
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 16, n_rows * 12))
-    for row in range(n_rows):
-        real_df = all_dfs['real']
-        if row == 0:
-            key = 'real'
         else:
-            key = baselines[row - 1]
-        method_str = METHOD_MAPPER[key]
-        offest = 0
-        count = 0
-        for i, value in all_dfs[key].items():
-            for j, df in enumerate(value):
-                real_value = real_df[i][j]
-                vmin = real_value.min().min()
-                vmax = real_value.max().max()
-                ax = axs[row, j + offest]
-                annot = []
-                for index in list(df.index):
-                    temp = []
-                    for column in list(df.columns):
-                        num = df.loc[index, column]
-                        cell_name = f'{index}\n{column}\n{num:.4f}'
-                        temp.append(cell_name)
-                    annot.append(temp)
+            continue
+    
+    df = data_dicts[baseline]
+    fig, axs = plt.subplots(1, len(sst_col_names), figsize=(6 * len(sst_col_names), 5))
+    
+    count = {}
+    for s in sst_col_names:
+        if len(sst_col_names) == 1:
+            ax = axs
+        else:
+            ax = axs[sst_col_names.index(s)]
+        temp = df.groupby([label_col_name, s]).size().unstack().fillna(0)
+        temp = temp.apply(lambda x: x/len(df), axis=0).to_dict()
+        count[s] = temp
+        
+        temp_df = pd.DataFrame(count[s])
+        temp_df.plot(kind='bar', stacked=True, ax=ax)
+        
+        # set ax xticks rotation 0 degree
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
+        
+        # capliatlize the first letter of target
+        ax.set_xlabel(label_col_name.capitalize(), fontsize=14)
+        ax.set_ylabel('Percentage', fontsize=14)
+        
+        # set title
+        ax.set_title(f'{s.capitalize()}')
+        
+        # increase the font size of x and y labels
+        ax.tick_params(axis='x', labelsize=12)
+        ax.tick_params(axis='y', labelsize=12)
+        
+        # legend label size
+        ax.legend(fontsize=12)
 
-                annot = np.array(annot)
-                # colorbar range
-                sns.heatmap(
-                    df, annot=annot, fmt='', cmap='coolwarm', ax=ax, xticklabels=False, yticklabels=False,
-                    vmin=vmin, vmax=vmax,
-                )
-                count += 1
-                
-                cbar = ax.collections[0].colorbar
-                cbar.ax.tick_params(labelsize=24)
-                
-                # set annotation font size
-                for t in ax.texts:
-                    t.set_fontsize(36)
-                
-                # set font size title
-                ax.set_title(f'{i} ({method_str})', fontsize=36)
-                # change font size of the x and y labels
-                current_x_label = ax.get_xlabel()
-                current_y_label = ax.get_ylabel()
-                ax.set_xlabel(current_x_label, fontsize=36 + 0)
-                ax.set_ylabel(current_y_label, fontsize=36 + 0)
-                
-            offest = count
+    fig.suptitle(
+        f'({METHOD_MAPPER[baseline]}) sensitive attributes vs target label on the {DATASET_MAPPER[dataset]} dataset',
+        fontsize=16,
+    )
     
-    # set a common title
-    axs.transpose()
-    
-    common_title = 'Heatmap of Contingency Tables for Real and Synthetic Data'
-    fig.suptitle(common_title, fontsize=36 + 8, y=0.998)
-    
+    # tight layout
     plt.tight_layout()
     
     # save figure
-    plot_dir = os.path.join(save_path)
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
+    file_name = f'{dataset}_{baseline}'
+    fig.savefig(os.path.join(plot_dir, 'stack', f'{file_name}.pdf'))
     
-    file_name = 'contingency'
-    fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
-
+    return fig
+    
 if __name__ == '__main__':
     # load the configuration file
     config = load_config('./assess.toml')
-    
-    # get the datasets
-    datasets = ['adult', 'bank', 'compass']
-    # datasets = ['adult']
-    
-    # # plot the fair distribution
-    plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
-    # plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
-    # plot_fair_dist_patches(datasets, config, baseline='fairsmote')
-    
-    # plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm', 'fairtabgan'])
-    # plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm', 'fairtabgan', 'fairsmote'])
-    # plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm'])
+
+    dataset = ['adult', 'compass', 'bank']
+    # dataset = ['bank']
+    baseline = ['fairtabgan', 'fairsmote', 'fairtabddpm', 'real']
+    for d in dataset:
+        for b in baseline:
+            print(f'Plotting {d} with {b}...')
+            plot_stacked_bars(d, config, b)

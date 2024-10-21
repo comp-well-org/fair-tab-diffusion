@@ -43,6 +43,25 @@ DATASET_MAPPER = {
     'law': 'Law',
 }
 
+COMPAS = {
+    'sex': {
+        '1': 'Male',
+        '0': 'Female',
+    },
+    'race': {
+        '0': 'African-American',
+        '2': 'Caucasian',
+        '3': 'Hispanic',
+        '5': 'Other',
+        '1': 'Asian',
+        '4': 'Native American',
+    },
+    'is_recid': {
+        '0': 'Yes',
+        '-1': 'No',
+    },
+}
+
 def clean_nested_dict(report: dict):
     # strip and make title the keys
     clean_report = {}
@@ -78,7 +97,13 @@ def read_data(
         # inverse transform for label column
         original_label = label_encoder.inverse_transform(data[[label_col_name]])
         data[label_col_name] = original_label.reshape(-1)
+        
+        if 'compass' in data_dir:
+            for col in COMPAS:
+                data[col] = data[col].map(COMPAS[col])
     
+            # print(data[cat_col_names].head(3))
+            
     return data
 
 # NOTE: this function is not used in the main function

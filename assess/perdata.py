@@ -110,9 +110,9 @@ def plot_fair_dist_patches(
                 synthetic[suffix] = new_value
                         
         axs = subfigs[datasets.index(dataset)].subplots(2, 1, sharex=True)
-        axs[0].set_title('Real', loc='right', color='blue', fontsize=6 + 18)
+        axs[0].set_title('Real', loc='right', color='blue', fontsize=6 + 14)
         method_str = METHOD_MAPPER[baseline]
-        axs[1].set_title(method_str, loc='right', color='red', fontsize=6 + 18)
+        axs[1].set_title(method_str, loc='right', color='red', fontsize=6 + 14)
         
         # plot real distribution
         real_dfs = []
@@ -124,7 +124,7 @@ def plot_fair_dist_patches(
         ax0 = sns.barplot(data=real_all, x='item', y='Percentage', hue='category', ax=axs[0], legend=True)
         # show percentage on top of the bars
         for p in ax0.containers:
-            ax0.bar_label(p, label_type='edge', fontsize=24, fmt='%.3f')
+            ax0.bar_label(p, label_type='edge', fontsize=6 + 12, fmt='%.4f')
     
         # plot synthetic distribution
         synthetic_dfs = []
@@ -138,7 +138,7 @@ def plot_fair_dist_patches(
         )
         # show percentage on top of the bars
         for p in ax1.containers:
-            ax1.bar_label(p, label_type='edge', fontsize=24, fmt='%.3f')
+            ax1.bar_label(p, label_type='edge', fontsize=6 + 12, fmt='%.4f')
 
         # rotate x labels
         x = np.arange(len(real_all['item']))
@@ -147,7 +147,7 @@ def plot_fair_dist_patches(
         
         # add legend
         handles, labels = axs[0].get_legend_handles_labels()
-        axs[0].legend(handles, labels, fontsize=6 + 18)
+        axs[0].legend(handles, labels, fontsize=6 + 12)
         
         # remove legned from the first subplot and x labels from the second
         axs[1].set_xlabel('')
@@ -158,18 +158,18 @@ def plot_fair_dist_patches(
             for side in ('right', 'top'):
                 sp = ax.spines[side]
                 sp.set_visible(False)
-            ax.tick_params(axis='both', which='major', labelsize=18)
+            ax.tick_params(axis='both', which='major', labelsize=2 + 12)
             # set y
-            ax.set_ylabel('Percentage', fontsize=6 + 18)
+            ax.set_ylabel('Percentage', fontsize=6 + 12)
 
         # add title as the name of the dataset
-        axs[0].set_title(title, fontsize=6 + 18)
+        axs[0].set_title(title, fontsize=6 + 14)
     
     # add a common title
     baseline_str = METHOD_MAPPER[baseline]
     if baseline_str == 'Ours':
         baseline_str = 'Our Method'
-    fig.suptitle(f'Sensitive Attribute Distribution in Real and Synthetic Data with {baseline_str}', fontsize=6 + 24)
+    fig.suptitle(f'Sensitive Attribute Distribution in Real and Synthetic Data with {baseline_str}', fontsize=6 + 16)
     
     # save figure
     file_name = f'real_vs_synthetic_sens_attr_dist_{baseline}'
@@ -189,8 +189,8 @@ def plot_fair_contingency_patches(
     for baseline in baselines:
         all_dfs[baseline] = {}
     
-    n_rows = len(baselines) + 1
-    n_cols = 0
+    n_rows = 0
+    n_cols = len(baselines) + 1
     for dataset in datasets:
         # real data
         data_dirs['real'] = os.path.join(DB_PATH, dataset)
@@ -202,7 +202,7 @@ def plot_fair_contingency_patches(
         label_encoder = load_encoder(os.path.join(data_dirs['real'], 'label_encoder.skops'))
         d_types = data_desc['d_types']
         
-        n_cols += len(sst_col_names)
+        n_rows += len(sst_col_names)
         
         data_dicts['real'] = read_data(
             data_dirs['real'], cat_col_names, label_col_name, d_types,
@@ -233,8 +233,17 @@ def plot_fair_contingency_patches(
                 dfs.append(contingency_table)
             all_dfs[method][DATASET_MAPPER[dataset]] = dfs
     
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 16, n_rows * 12))
-    for row in range(n_rows):
+    print(all_dfs.keys())
+    
+    width_ratios = [1] * n_cols
+    width_ratios[-1] = 1.15
+    fig, axs = plt.subplots(
+        n_rows, n_cols, figsize=(n_cols * 13, n_rows * 13),
+        gridspec_kw={'width_ratios': width_ratios},
+    )
+    
+    for row in range(n_cols):
+        print(row)
         real_df = all_dfs['real']
         if row == 0:
             key = 'real'
@@ -248,7 +257,10 @@ def plot_fair_contingency_patches(
                 real_value = real_df[i][j]
                 vmin = real_value.min().min()
                 vmax = real_value.max().max()
-                ax = axs[row, j + offest]
+                if n_rows == 1:
+                    ax = axs[row]
+                else:
+                    ax = axs[j + offest, row]
                 annot = []
                 for index in list(df.index):
                     temp = []
@@ -260,33 +272,40 @@ def plot_fair_contingency_patches(
 
                 annot = np.array(annot)
                 # colorbar range
-                sns.heatmap(
-                    df, annot=annot, fmt='', cmap='coolwarm', ax=ax, xticklabels=False, yticklabels=False,
-                    vmin=vmin, vmax=vmax,
-                )
+                if row == n_cols - 1:
+                    sns.heatmap(
+                        df, annot=annot, fmt='', cmap='coolwarm', ax=ax, xticklabels=False, yticklabels=False,
+                        vmin=vmin, vmax=vmax, cbar=True,
+                    )
+                    cbar = ax.collections[0].colorbar
+                    cbar.ax.tick_params(labelsize=36)
+                else:
+                    sns.heatmap(
+                        df, annot=annot, fmt='', cmap='coolwarm', ax=ax, xticklabels=False, yticklabels=False,
+                        vmin=vmin, vmax=vmax, cbar=False,
+                    )
                 count += 1
-                
-                cbar = ax.collections[0].colorbar
-                cbar.ax.tick_params(labelsize=24)
                 
                 # set annotation font size
                 for t in ax.texts:
                     t.set_fontsize(36)
                 
                 # set font size title
-                ax.set_title(f'{i} ({method_str})', fontsize=36)
+                if method_str == 'Ours':
+                    # bold and red
+                    ax.set_title(f'{i} ({method_str})', fontsize=36, fontweight='bold', color='red')
+                else:
+                    ax.set_title(f'{i} ({method_str})', fontsize=36, color='blue')
+                
                 # change font size of the x and y labels
                 current_x_label = ax.get_xlabel()
                 current_y_label = ax.get_ylabel()
-                ax.set_xlabel(current_x_label, fontsize=36 + 0)
-                ax.set_ylabel(current_y_label, fontsize=36 + 0)
+                ax.set_xlabel(current_x_label, fontsize=36 + 8)
+                ax.set_ylabel(current_y_label, fontsize=36 + 8)
                 
             offest = count
     
-    # set a common title
-    axs.transpose()
-    
-    common_title = 'Heatmap of Contingency Tables for Real and Synthetic Data'
+    common_title = f'Heatmap of Contingency Tables for Real and Synthetic Data on {DATASET_MAPPER[datasets[0]]} Dataset'
     fig.suptitle(common_title, fontsize=36 + 8, y=0.998)
     
     plt.tight_layout()
@@ -296,7 +315,7 @@ def plot_fair_contingency_patches(
     if not os.path.exists(plot_dir):
         os.makedirs(plot_dir)
     
-    file_name = 'contingency'
+    file_name = datasets[0]
     fig.savefig(os.path.join(plot_dir, f'{file_name}.pdf'))
 
 if __name__ == '__main__':
@@ -304,14 +323,19 @@ if __name__ == '__main__':
     config = load_config('./assess.toml')
     
     # get the datasets
-    datasets = ['adult', 'bank', 'compass']
+    # datasets = ['adult', 'bank', 'compass']
     # datasets = ['adult']
+    # datasets = ['bank']
+    # datasets = ['compass']
+    for dataset in ['adult', 'bank', 'compass']:
+        datasets = [dataset]
+        plot_fair_contingency_patches(datasets, config, baselines=['fairtabgan', 'fairsmote', 'fairtabddpm'])
     
     # # plot the fair distribution
-    plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
+    # plot_fair_dist_patches(datasets, config, baseline='fairtabddpm')
     # plot_fair_dist_patches(datasets, config, baseline='fairtabgan')
     # plot_fair_dist_patches(datasets, config, baseline='fairsmote')
     
     # plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm', 'fairtabgan'])
-    # plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm', 'fairtabgan', 'fairsmote'])
+    # plot_fair_contingency_patches(datasets, config, baselines=['fairtabgan', 'fairsmote', 'fairtabddpm'])
     # plot_fair_contingency_patches(datasets, config, baselines=['fairtabddpm'])
