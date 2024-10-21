@@ -255,22 +255,22 @@ def plot_stacked_bars(
         ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
         
         # capliatlize the first letter of target
-        ax.set_xlabel(label_col_name.capitalize(), fontsize=14)
-        ax.set_ylabel('Percentage', fontsize=14)
+        ax.set_xlabel(label_col_name.capitalize(), fontsize=16)
+        ax.set_ylabel('Percentage', fontsize=16)
         
         # set title
-        ax.set_title(f'{s.capitalize()}')
+        ax.set_title(f'{s.capitalize()}', fontsize=18)
         
         # increase the font size of x and y labels
-        ax.tick_params(axis='x', labelsize=12)
-        ax.tick_params(axis='y', labelsize=12)
+        ax.tick_params(axis='x', labelsize=16)
+        ax.tick_params(axis='y', labelsize=16)
         
         # legend label size
-        ax.legend(fontsize=12)
+        ax.legend(fontsize=16)
 
     fig.suptitle(
-        f'({METHOD_MAPPER[baseline]}) sensitive attributes vs target label on the {DATASET_MAPPER[dataset]} dataset',
-        fontsize=16,
+        f'({METHOD_MAPPER[baseline]}) sensitive attributes vs target label\non the {DATASET_MAPPER[dataset]} dataset',
+        fontsize=19,
     )
     
     # tight layout
