@@ -1,5 +1,7 @@
 # Fair Tabular Diffusion
 
+NOTE: The code for our method is in `src`, and the Python script for running experiments using our method is `fairtabddpm_opt.py`.
+
 ## Setup
 
 The PyTorch version we used in this project is `2.3.0+cu121`, and you can install the required packages by running the following command:
@@ -44,10 +46,6 @@ bash tabddpm.sh
 bash tabsyn.sh
 ```
 
-## Assessing the quality of synthetic data
-
-TBA
-
 ## Benchmarks
 
 ### Datasets
@@ -70,10 +68,6 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 - [X] TabSyn
 - [X] Fair Class Balancing (FCB)
 - [X] FairTGAN
-
-## Contact
-
-- Zeyu Yang
 
 ## To do
 
