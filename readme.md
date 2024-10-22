@@ -20,7 +20,7 @@ To download and preprocess the datasets, run the following command:
 python build.py
 ```
 
-## Running experiments
+## Running Experiments
 
 Under the root directory, run the following commands to reproduce the results of our method:
 
@@ -69,7 +69,7 @@ The baseline methods we used in this project are as follows (sorted alphabetical
 - [X] Fair Class Balancing (FCB)
 - [X] FairTGAN
 
-## To do
+## To Do
 
 Avoid repeatition to improve the code quality:
 
