@@ -92,3 +92,7 @@ Automate the experiments and evaluations:
 Correct the errors:
 
 - [ ] The implementation of TabSyn in `baselines` is incorrect
+
+## License
+fair-tab-diffusion is released under the GPL 3.0. See [LICENSE](https://github.com/comp-well-org/fair-tab-diffusion/blob/main/LICENSE.txt) for details.
+
